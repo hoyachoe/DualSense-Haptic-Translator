@@ -1,8 +1,10 @@
-﻿# DualSense Haptic Translator
+﻿# Forza Horizon DualSense Haptic Translator
 
-DualSense Haptic Translator is a highly experimental project for bringing DualSense-style haptic audio and adaptive trigger feedback to the Forza Horizon series on Windows.
+A highly experimental Forza Horizon telemetry translator for DualSense haptic audio and adaptive trigger feedback on Windows.
 
-Forza Horizon does not officially provide native DualSense haptic feedback, so this project listens to Forza UDP telemetry and translates selected driving events into DualSense output. It is not meant to compete with, replace, or claim superiority over other gamepads or force-feedback experiences. Many players have strong preferences and long familiarity with their own controllers; this project is simply an experiment for people who enjoy the DualSense and want to explore what might be possible in games that do not directly support it.
+This project is focused specifically on the Forza Horizon series. It listens to Forza Horizon UDP Data Out telemetry and translates selected driving events into DualSense haptic audio and adaptive trigger feedback.
+
+Forza Horizon does not officially provide native DualSense haptic feedback, so this is an experimental compatibility project for players who want to explore DualSense-style feedback in Forza. It is not intended to compare against, replace, or claim superiority over other gamepads or force-feedback systems. Many players have strong preferences and long familiarity with their own controllers; this project is simply an experiment for people who enjoy the DualSense and want to explore what might be possible in games that do not directly support it.
 
 This is a `v0.9` pre-release shared early for requested testing. It is not complete software, and correct operation is not guaranteed on every PC, controller firmware, Windows audio configuration, Forza version, or store version. Haptic tuning, trigger behavior, HUD behavior, presets, device routing, and compatibility may still change before `v1.0`.
 
