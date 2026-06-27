@@ -1,17 +1,18 @@
 ﻿# DualSense Haptic Translator
 
-Forza telemetry to DualSense haptic translator.
+DualSense Haptic Translator is a highly experimental project for bringing DualSense-style haptic audio and adaptive trigger feedback to the Forza Horizon series on Windows.
 
-This tool listens to Forza Horizon UDP Data Out packets, draws live graphs, and
-translates telemetry into DualSense haptic audio. This is a `v0.9` pre-release
-shared early for requested testing, so tuning and behavior may still change.
+Forza Horizon does not officially provide native DualSense haptic feedback, so this project listens to Forza UDP telemetry and translates selected driving events into DualSense output. It is not meant to compete with, replace, or claim superiority over other gamepads or force-feedback experiences. Many players have strong preferences and long familiarity with their own controllers; this project is simply an experiment for people who enjoy the DualSense and want to explore what might be possible in games that do not directly support it.
+
+This is a `v0.9` pre-release shared early for requested testing. Haptic tuning, trigger behavior, HUD behavior, presets, device routing, and compatibility may still change before `v1.0`.
 
 ## Quick Start
 
 1. Connect your DualSense controller to Windows.
-2. Start `DualSense Haptic Translator.exe` from the release package.
-3. In Forza Horizon, enable Data Out.
-4. Set the target IP and port:
+2. Download the release ZIP and extract it.
+3. Start `DualSense Haptic Translator.exe` from the extracted release folder.
+4. In Forza Horizon, enable Data Out.
+5. Set the target IP and port:
    - IP Address: `127.0.0.1`
    - Port: `8800` by default, or the port shown in the app.
 
@@ -29,13 +30,9 @@ python telemetry_grapher.py --host 0.0.0.0 --port 8800 --haptic-event-port 18801
 
 ## Steam vs Xbox App / Windows Store
 
-Steam versions of Forza Horizon usually work with `127.0.0.1` Data Out without
-extra Windows setup.
+Steam versions of Forza Horizon usually work with `127.0.0.1` Data Out without extra Windows setup.
 
-Xbox App / Windows Store versions can run inside an AppContainer. In that case,
-Windows may block loopback traffic from the game to a local app. If Forza Data Out
-is enabled but this app receives no telemetry, add a loopback exemption for the
-Forza package.
+Xbox App / Windows Store versions can run inside an AppContainer. In that case, Windows may block loopback traffic from the game to a local app. If Forza Data Out is enabled but this app receives no telemetry, add a loopback exemption for the Forza package.
 
 Open PowerShell as Administrator and list current loopback exemptions:
 
@@ -64,18 +61,15 @@ IP ADDRESS: 127.0.0.1
 PORT: 8800, or the telemetry port shown in the app
 ```
 
-If `127.0.0.1` still does not work, try setting the Forza Data Out IP address to
-this PC's IPv4 address from `ipconfig`.
+If `127.0.0.1` still does not work, try setting the Forza Data Out IP address to this PC's IPv4 address from `ipconfig`.
 
-The telemetry listener should bind to all interfaces, not loopback only. In C#,
-that would look like:
+The telemetry listener should bind to all interfaces, not loopback only. In C#, that would look like:
 
 ```csharp
 var udp = new UdpClient(new IPEndPoint(IPAddress.Any, port));
 ```
 
-This app's telemetry listener is started with `--host 0.0.0.0`, which follows the
-same idea and keeps LAN/IP testing possible.
+This app's telemetry listener is started with `--host 0.0.0.0`, which follows the same idea and keeps LAN/IP testing possible.
 
 ## What To Watch First
 
@@ -90,9 +84,7 @@ same idea and keeps LAN/IP testing possible.
 
 ## DualSense Output Server
 
-The release launcher starts the DualSense output server automatically. The server
-listens for local haptic events on `127.0.0.1:18801` and sends translated haptic
-output to DualSense channels 3 and 4.
+The release launcher starts the DualSense output server automatically. The server listens for local haptic events on `127.0.0.1:18801` and sends translated haptic output to DualSense channels 3 and 4.
 
 For development runs, you can still start the pieces manually:
 
@@ -103,9 +95,8 @@ run_telemetry_grapher.bat
 
 ## Status
 
-This project is not final release software yet. Haptic/trigger tuning, HUD
-behavior, presets, device routing, and compatibility may still be adjusted before
-`v1.0`.
+This project is not final release software yet. Haptic/trigger tuning, HUD behavior, presets, device routing, and compatibility may still be adjusted before `v1.0`.
 
-Note: `maxGears` is intentionally not used for gear-shift haptic classification
-because tuned transmissions can make it stale or misleading.
+Please treat the current release as an experimental preview rather than a polished end-user product.
+
+Note: `maxGears` is intentionally not used for gear-shift haptic classification because tuned transmissions can make it stale or misleading.
