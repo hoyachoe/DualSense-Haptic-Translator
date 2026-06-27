@@ -3,21 +3,79 @@
 Forza telemetry to DualSense haptic translator.
 
 This tool listens to Forza Horizon UDP Data Out packets, draws live graphs, and
-translates telemetry into DualSense haptic audio. Adaptive trigger output is the
-next planned output path.
+translates telemetry into DualSense haptic audio. This is a `v0.9` pre-release
+shared early for requested testing, so tuning and behavior may still change.
 
-## Run
+## Quick Start
 
-1. In Forza Horizon, enable Data Out.
-2. Set the target IP to this PC. For same-PC testing, use `127.0.0.1`.
-3. Set the target port to `8800`.
-4. Run `run_telemetry_grapher.bat`.
+1. Connect your DualSense controller to Windows.
+2. Start `DualSense Haptic Translator.exe` from the release package.
+3. In Forza Horizon, enable Data Out.
+4. Set the target IP and port:
+   - IP Address: `127.0.0.1`
+   - Port: `8800` by default, or the port shown in the app.
+
+For source/development runs, use:
+
+```bat
+run_telemetry_grapher.bat
+```
 
 You can also run directly:
 
 ```bat
-python telemetry_grapher.py --port 8800
+python telemetry_grapher.py --host 0.0.0.0 --port 8800 --haptic-event-port 18801
 ```
+
+## Steam vs Xbox App / Windows Store
+
+Steam versions of Forza Horizon usually work with `127.0.0.1` Data Out without
+extra Windows setup.
+
+Xbox App / Windows Store versions can run inside an AppContainer. In that case,
+Windows may block loopback traffic from the game to a local app. If Forza Data Out
+is enabled but this app receives no telemetry, add a loopback exemption for the
+Forza package.
+
+Open PowerShell as Administrator and list current loopback exemptions:
+
+```powershell
+CheckNetIsolation LoopbackExempt -s
+```
+
+For a working Forza Horizon package, you may see an entry like:
+
+```text
+[3] -----------------------------------------------------------------
+    Name: microsoft.sunrisebasegame_8wekyb3d8bbwe
+```
+
+If the Forza package is not listed, add it:
+
+```powershell
+CheckNetIsolation LoopbackExempt -a -n=Microsoft.SunriseBaseGame_8wekyb3d8bbwe
+```
+
+Then restart Forza and use these Forza Data Out settings:
+
+```text
+DATA OUT: ON
+IP ADDRESS: 127.0.0.1
+PORT: 8800, or the telemetry port shown in the app
+```
+
+If `127.0.0.1` still does not work, try setting the Forza Data Out IP address to
+this PC's IPv4 address from `ipconfig`.
+
+The telemetry listener should bind to all interfaces, not loopback only. In C#,
+that would look like:
+
+```csharp
+var udp = new UdpClient(new IPEndPoint(IPAddress.Any, port));
+```
+
+This app's telemetry listener is started with `--host 0.0.0.0`, which follows the
+same idea and keeps LAN/IP testing possible.
 
 ## What To Watch First
 
@@ -32,13 +90,22 @@ python telemetry_grapher.py --port 8800
 
 ## DualSense Output Server
 
-Run `start_haptic_server.bat` first. The server lives in `dualsense_output_server` and listens for local haptic events on `127.0.0.1:18801`. It sends translated haptic output to DualSense channels 3 and 4.
+The release launcher starts the DualSense output server automatically. The server
+listens for local haptic events on `127.0.0.1:18801` and sends translated haptic
+output to DualSense channels 3 and 4.
 
-Then run `run_telemetry_grapher.bat`. The grapher listens to Forza UDP on port `8800`, detects gear changes, and forwards `GEAR_SHIFT` events with rpm/throttle/torque/PI/maxRpm payload to the haptic server. The grapher also saves its window size and position to `telemetry_grapher_settings.json` when closed.
+For development runs, you can still start the pieces manually:
 
+```bat
+start_haptic_server.bat
+run_telemetry_grapher.bat
+```
 
+## Status
 
+This project is not final release software yet. Haptic/trigger tuning, HUD
+behavior, presets, device routing, and compatibility may still be adjusted before
+`v1.0`.
 
-
-Note: maxGears is intentionally not used for gear-shift haptic classification because tuned transmissions can make it stale or misleading.
-
+Note: `maxGears` is intentionally not used for gear-shift haptic classification
+because tuned transmissions can make it stale or misleading.
