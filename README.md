@@ -11,8 +11,9 @@ This is a `v0.9` pre-release shared early for requested testing. It is not compl
 1. Connect your DualSense controller to Windows.
 2. Download the release ZIP and extract it.
 3. Start `DualSense Haptic Translator.exe` from the extracted release folder.
-4. In Forza Horizon, enable Data Out.
-5. Set the target IP and port:
+4. In the app, press `Select DualSense` and choose the actual DualSense audio output device you are using. This step is required for haptic audio output.
+5. In Forza Horizon, enable Data Out.
+6. Set the target IP and port:
    - IP Address: `127.0.0.1`
    - Port: `8800` by default, or the port shown in the app.
 
