@@ -8,7 +8,9 @@ Forza Horizon does not officially provide native DualSense haptic feedback, so t
 
 This is a `v0.9` pre-release shared early for requested testing. It is not complete software, and correct operation is not guaranteed on every PC, controller firmware, Windows audio configuration, Forza version, or store version. Haptic tuning, trigger behavior, HUD behavior, presets, device routing, and compatibility may still change before `v1.0`.
 
-## Quick Start
+## Quick Start For Release ZIP
+
+For normal release users, you do not need to start the server manually. The release launcher starts the required DualSense output server automatically.
 
 1. Connect your DualSense controller to Windows.
 2. Download the release ZIP and extract it.
@@ -19,17 +21,7 @@ This is a `v0.9` pre-release shared early for requested testing. It is not compl
    - IP Address: `127.0.0.1`
    - Port: `8800` by default, or the port shown in the app.
 
-For source/development runs, use:
-
-```bat
-run_telemetry_grapher.bat
-```
-
-You can also run directly:
-
-```bat
-python telemetry_grapher.py --host 0.0.0.0 --port 8800 --haptic-event-port 18801
-```
+If haptic output does not work, first check that the selected Windows playback device is the DualSense audio device, then use the app's haptic test button.
 
 ## Steam vs Xbox App / Windows Store
 
@@ -85,16 +77,24 @@ This app's telemetry listener is started with `--host 0.0.0.0`, which follows th
 - `smashable_vel_diff`: object impact candidate.
 - `accel_g`: collision and body shock candidate.
 
-## DualSense Output Server
+## Development / Manual Run
 
-The release launcher starts the DualSense output server automatically. The server listens for local haptic events on `127.0.0.1:18801` and sends translated haptic output to DualSense channels 3 and 4.
+This section is only for people running the project from source. Release ZIP users should normally use `DualSense Haptic Translator.exe` instead.
 
-For development runs, you can still start the pieces manually:
+For source/development runs, use:
+
+```bat
+run_telemetry_grapher.bat
+```
+
+You can also start the pieces manually:
 
 ```bat
 start_haptic_server.bat
-run_telemetry_grapher.bat
+python telemetry_grapher.py --host 0.0.0.0 --port 8800 --haptic-event-port 18801
 ```
+
+The DualSense output server listens for local haptic events on `127.0.0.1:18801` and sends translated haptic output to DualSense channels 3 and 4.
 
 ## Status
 
