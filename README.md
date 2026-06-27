@@ -4,7 +4,7 @@ DualSense Haptic Translator is a highly experimental project for bringing DualSe
 
 Forza Horizon does not officially provide native DualSense haptic feedback, so this project listens to Forza UDP telemetry and translates selected driving events into DualSense output. It is not meant to compete with, replace, or claim superiority over other gamepads or force-feedback experiences. Many players have strong preferences and long familiarity with their own controllers; this project is simply an experiment for people who enjoy the DualSense and want to explore what might be possible in games that do not directly support it.
 
-This is a `v0.9` pre-release shared early for requested testing. Haptic tuning, trigger behavior, HUD behavior, presets, device routing, and compatibility may still change before `v1.0`.
+This is a `v0.9` pre-release shared early for requested testing. It is not complete software, and correct operation is not guaranteed on every PC, controller firmware, Windows audio configuration, Forza version, or store version. Haptic tuning, trigger behavior, HUD behavior, presets, device routing, and compatibility may still change before `v1.0`.
 
 ## Quick Start
 
@@ -95,8 +95,11 @@ run_telemetry_grapher.bat
 
 ## Status
 
-This project is not final release software yet. Haptic/trigger tuning, HUD behavior, presets, device routing, and compatibility may still be adjusted before `v1.0`.
+This project is not final release software yet. Some features are still being improved, tuning is ongoing, and behavior may change between builds.
+
+Normal operation is not guaranteed. The app may fail to receive telemetry, may not detect the intended DualSense audio device, or may behave differently depending on Windows audio routing, controller connection mode, Forza edition, and system configuration.
 
 Please treat the current release as an experimental preview rather than a polished end-user product.
 
 Note: `maxGears` is intentionally not used for gear-shift haptic classification because tuned transmissions can make it stale or misleading.
+
