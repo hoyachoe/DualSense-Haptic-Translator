@@ -23,7 +23,7 @@ For normal release users, you do not need to start the server manually. The rele
 
 If haptic output does not work, first check that the selected Windows playback device is the DualSense audio device, then use the app's haptic test button.
 
-## Steam vs Xbox App / Windows Store
+## Store Version Notes
 
 Steam versions of Forza Horizon usually work with `127.0.0.1` Data Out without extra Windows setup.
 
