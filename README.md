@@ -106,3 +106,6 @@ Please treat the current release as an experimental preview rather than a polish
 
 Note: `maxGears` is intentionally not used for gear-shift haptic classification because tuned transmissions can make it stale or misleading.
 
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
