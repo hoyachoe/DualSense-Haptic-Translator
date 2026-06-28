@@ -522,7 +522,7 @@
       "slip_end_threshold": 2.2,
       "slip_response_mode": "Pulse",
       "slip_pulse_enabled": true,
-      "slip_pulse_style": "Rumble",
+      "slip_pulse_style": "Wave",
       "slip_drop_low_percent": 0,
       "slip_low_percent": 1,
       "slip_pulse_high_percent": 100,

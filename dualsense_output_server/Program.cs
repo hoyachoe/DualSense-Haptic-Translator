@@ -19,6 +19,7 @@ var outputDeviceNameNeedle = ParseOutputDeviceNameNeedle(args);
 var masterGain = ParseMasterGain(args);
 var keyboardEnabled = !args.Any(arg => arg.Equals("--no-keys", StringComparison.OrdinalIgnoreCase));
 var triggerHidEnabled = !args.Any(arg => arg.Equals("--no-trigger-hid", StringComparison.OrdinalIgnoreCase));
+var startupPulseEnabled = !args.Any(arg => arg.Equals("--no-startup-pulse", StringComparison.OrdinalIgnoreCase));
 
 using var enumerator = new MMDeviceEnumerator();
 if (listOutputDevices)
@@ -100,8 +101,11 @@ else
 }
 Console.WriteLine();
 
-provider.Trigger(GearShiftParams.DefaultStartup);
-Console.WriteLine($"{DateTime.Now:HH:mm:ss.fff} startup half-strength core burst");
+if (startupPulseEnabled)
+{
+    provider.Trigger(GearShiftParams.DefaultStartup);
+    Console.WriteLine($"{DateTime.Now:HH:mm:ss.fff} startup half-strength core burst");
+}
 
 if (keyboardEnabled && !Console.IsInputRedirected)
 {
@@ -378,6 +382,12 @@ while (true)
     {
         provider.UpdateRoadBumps(roadBumps);
     }
+    else if (TryParseHapticTest(message, out var hapticTest))
+    {
+        provider.TriggerHapticTest(hapticTest);
+        Console.WriteLine(
+            $"{DateTime.Now:HH:mm:ss.fff} HAPTIC_TEST hz={hapticTest.Hz:0.0} amp={hapticTest.AmplitudePercent:0.0} ms={hapticTest.DurationMs}");
+    }
     else if (TryParseBrakePulseHaptic(message, out var brakePulseHaptic))
     {
         provider.UpdateBrakePulseHaptic(brakePulseHaptic);
@@ -468,7 +478,7 @@ while (true)
             }
         }
     }
-    else if (TryParseTriggerModeTest(message, out var triggerPreset, out var testCount, out var testOnMs, out var testOffMs, out var testHz, out var testAmp, out var wallStart, out var wallEnd, out var wallStrength))
+    else if (TryParseTriggerModeTest(message, out var triggerSide, out var triggerPreset, out var testCount, out var testOnMs, out var testOffMs, out var testHz, out var testAmp, out var wallStart, out var wallEnd, out var wallStrength))
     {
         if (triggerWriter.Connected)
         {
@@ -492,14 +502,14 @@ while (true)
             }
             lock (triggerWriteLock)
             {
-                triggerWriter.TestRightPreset(triggerPreset, testCount, testOnMs, testOffMs, testHz, testAmp, wallStart, wallEnd, wallStrength);
+                triggerWriter.TestRightPreset(triggerPreset, testCount, testOnMs, testOffMs, testHz, testAmp, wallStart, wallEnd, wallStrength, triggerSide);
             }
             lock (triggerStateLock)
             {
                 triggerLoopPausedUntilUtc = DateTime.MinValue;
                 lastTriggerUpdateUtc = DateTime.UtcNow;
             }
-            Console.WriteLine($"{DateTime.Now:HH:mm:ss.fff} TRIGGER_MODE_TEST preset={triggerPreset} count={testCount} onMs={testOnMs} offMs={testOffMs} hz={testHz} amp={testAmp} wall={wallStart}-{wallEnd}/{wallStrength}");
+            Console.WriteLine($"{DateTime.Now:HH:mm:ss.fff} TRIGGER_MODE_TEST side={(triggerSide == 0 ? "LR" : triggerSide < 0 ? "L" : "R")} preset={triggerPreset} count={testCount} onMs={testOnMs} offMs={testOffMs} hz={testHz} amp={testAmp} wall={wallStart}-{wallEnd}/{wallStrength}");
         }
         else
         {
@@ -524,8 +534,9 @@ while (true)
     }
 }
 
-static bool TryParseTriggerModeTest(string message, out string preset, out int count, out int onMs, out int offMs, out int hz, out int amp, out int wallStart, out int wallEnd, out int wallStrength)
+static bool TryParseTriggerModeTest(string message, out int side, out string preset, out int count, out int onMs, out int offMs, out int hz, out int amp, out int wallStart, out int wallEnd, out int wallStrength)
 {
+    side = 0;
     preset = "off";
     count = 8;
     onMs = 160;
@@ -546,6 +557,7 @@ static bool TryParseTriggerModeTest(string message, out string preset, out int c
         .Select(part => part.Split('=', 2))
         .Where(pair => pair.Length == 2)
         .ToDictionary(pair => pair[0], pair => pair[1], StringComparer.OrdinalIgnoreCase);
+    side = ReadSide(values, "side", 0);
     preset = values.TryGetValue("preset", out var value) ? value : "off";
     count = Math.Max(1, Math.Min(30, ReadInt(values, "count", count)));
     onMs = Math.Max(20, Math.Min(1000, ReadInt(values, "onMs", onMs)));
@@ -559,6 +571,27 @@ static bool TryParseTriggerModeTest(string message, out string preset, out int c
     {
         (wallStart, wallEnd) = (wallEnd, wallStart);
     }
+    return true;
+}
+
+static bool TryParseHapticTest(string message, out HapticTestParams hapticTest)
+{
+    hapticTest = default;
+    var parts = message.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (parts.Length == 0 || !string.Equals(parts[0], "HAPTIC_TEST", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var values = parts
+        .Skip(1)
+        .Select(part => part.Split('=', 2))
+        .Where(pair => pair.Length == 2)
+        .ToDictionary(pair => pair[0], pair => pair[1], StringComparer.OrdinalIgnoreCase);
+    hapticTest = new HapticTestParams(
+        Hz: MathUtil.Clamp(ReadFloat(values, "hz", 80), 20, 200),
+        AmplitudePercent: MathUtil.Clamp(ReadFloat(values, "amp", 40), 0, 100),
+        DurationMs: Math.Max(40, Math.Min(5000, ReadInt(values, "durationMs", 1500))));
     return true;
 }
 
@@ -1149,6 +1182,21 @@ static float ReadFloat(Dictionary<string, string> values, string key, float fall
         : fallback;
 }
 
+static int ReadSide(Dictionary<string, string> values, string key, int fallback)
+{
+    if (!values.TryGetValue(key, out var raw))
+    {
+        return fallback;
+    }
+    return raw.Trim().ToUpperInvariant() switch
+    {
+        "L" or "LEFT" => -1,
+        "R" or "RIGHT" => 1,
+        "LR" or "BOTH" or "ALL" => 0,
+        _ => Math.Max(-1, Math.Min(1, ReadInt(values, key, fallback))),
+    };
+}
+
 static bool IsFreshTriggerPacket(string message, int maxAgeMs = 250)
 {
     var parts = message.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -1245,6 +1293,11 @@ readonly record struct BrakePulseHapticParams(
     float Hz,
     float Volume,
     DateTime ReceivedAt);
+
+readonly record struct HapticTestParams(
+    float Hz,
+    float AmplitudePercent,
+    int DurationMs);
 
 readonly record struct ImpactParams(
     float Power,
@@ -1344,6 +1397,21 @@ sealed class ActiveGearShift
     public double TailBoost { get; }
     public double MetalTailBoost { get; }
     public double Seed { get; }
+    public long TotalSamples { get; }
+    public long ElapsedSamples { get; set; }
+}
+
+sealed class ActiveHapticTest
+{
+    public ActiveHapticTest(HapticTestParams p, int sampleRate)
+    {
+        Hz = MathUtil.Clamp(p.Hz, 20, 200);
+        Amplitude = MathUtil.Clamp(p.AmplitudePercent / 100.0, 0, 1);
+        TotalSamples = Math.Max(1, sampleRate * Math.Max(40, p.DurationMs) / 1000);
+    }
+
+    public double Hz { get; }
+    public double Amplitude { get; }
     public long TotalSamples { get; }
     public long ElapsedSamples { get; set; }
 }
@@ -1457,6 +1525,7 @@ sealed class GearShiftCoreProvider : IWaveProvider
     private readonly object gateLock = new();
     private readonly Random random = new();
     private ActiveGearShift? activeShift;
+    private ActiveHapticTest? activeHapticTest;
     private ActiveImpact? activeImpact;
     private ActiveSmashableImpact? activeSmashableImpact;
     private ActiveSideImpact? activeSideImpact;
@@ -1469,6 +1538,7 @@ sealed class GearShiftCoreProvider : IWaveProvider
     private double phase;
     private double highHzPhase;
     private double particlesPhase;
+    private double hapticTestPhase;
     private double revLimitPhase;
     private double rumbleKerbsLeftPhase;
     private double rumbleKerbsRightPhase;
@@ -1505,6 +1575,14 @@ sealed class GearShiftCoreProvider : IWaveProvider
         lock (gateLock)
         {
             activeShift = new ActiveGearShift(parameters, format.SampleRate);
+        }
+    }
+
+    public void TriggerHapticTest(HapticTestParams parameters)
+    {
+        lock (gateLock)
+        {
+            activeHapticTest = new ActiveHapticTest(parameters, format.SampleRate);
         }
     }
 
@@ -1647,6 +1725,39 @@ sealed class GearShiftCoreProvider : IWaveProvider
                 var outOffset = offset + bytesWritten;
                 WriteSample(buffer, outOffset + sampleEncoding.BytesPerSample * 2, leftSample);
                 WriteSample(buffer, outOffset + sampleEncoding.BytesPerSample * 3, rightSample);
+            }
+
+            ActiveHapticTest? hapticTest;
+            lock (gateLock)
+            {
+                hapticTest = activeHapticTest;
+                if (hapticTest is not null)
+                {
+                    if (hapticTest.ElapsedSamples >= hapticTest.TotalSamples)
+                    {
+                        activeHapticTest = null;
+                        hapticTest = null;
+                    }
+                    else
+                    {
+                        hapticTest.ElapsedSamples++;
+                    }
+                }
+            }
+
+            if (hapticTest is not null)
+            {
+                var phaseStep = Math.Tau * hapticTest.Hz / format.SampleRate;
+                var fadeSamples = Math.Max(1, format.SampleRate * 30 / 1000);
+                var attack = MathUtil.Clamp(hapticTest.ElapsedSamples / (double)fadeSamples, 0, 1);
+                var release = MathUtil.Clamp((hapticTest.TotalSamples - hapticTest.ElapsedSamples) / (double)fadeSamples, 0, 1);
+                var envelope = Math.Min(attack, release);
+                var sample = (float)(Math.Sin(hapticTestPhase) * hapticTest.Amplitude * masterGain * envelope);
+                hapticTestPhase += phaseStep;
+                if (hapticTestPhase >= Math.Tau) hapticTestPhase -= Math.Tau;
+                var outOffset = offset + bytesWritten;
+                AddSample(buffer, outOffset + sampleEncoding.BytesPerSample * 2, sample);
+                AddSample(buffer, outOffset + sampleEncoding.BytesPerSample * 3, sample);
             }
 
             ActiveImpact? impact;

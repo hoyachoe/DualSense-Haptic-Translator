@@ -1,0 +1,9 @@
+{
+  "udp_port": 8800,
+  "rpm_hud_speed_x_ratio": 0.61,
+  "rpm_hud_speed_y_ratio": 0.82,
+  "drift_relief_enabled": true,
+  "dsx_host": "127.0.0.1",
+  "dsx_port": 6969,
+  "dsx_audio_volume_percent": 100
+}

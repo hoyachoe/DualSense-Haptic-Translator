@@ -86,18 +86,101 @@ HUD_SCALE_PRESETS = (100, 150, 200)
 MAIN_UI_SCALE_PRESETS = (100, 150, 200)
 DISPLAY_SCALE_PRESETS = (100, 125, 150, 200)
 CONFIG_PRESET_NAMES = ("Base", "Soft", "Strong", "User 1", "User 2")
+CONFIG_REFERENCE_PRESET_NAMES = ("Base", "Soft", "Strong")
+CONFIG_LOCK_REFERENCE_PRESETS = True
 CONFIG_PRESET_SETTING_KEYS = (
     "effects",
     "trigger_effects",
 )
-HUD_SNAP_PIXELS = 20
+HUD_SNAP_PIXELS = 10
+HUD_SNAP_PIXEL_MIN = 1
+HUD_SNAP_PIXEL_MAX = 200
 BRAKE_DYNAMIC_LEARNING_SLIP_THRESHOLD = 1.4
 BRAKE_DYNAMIC_MIN_LEARNING_BRAKE_PERCENT = 30.0
 BRAKE_DYNAMIC_LEARNING_WALL_MARGIN = 5.0
-SETTINGS_PATH = Path(__file__).with_name("telemetry_grapher_settings.json")
-SETTINGS_BACKUP_PATH = Path(__file__).with_name("telemetry_grapher_settings.backup.json")
-CONFIG_PRESET_DIR = Path(__file__).with_name("config_presets")
-LOG_DIR = Path(__file__).with_name("logs")
+def running_frozen() -> bool:
+    return bool(getattr(sys, "frozen", False))
+
+
+def executable_dir() -> Path:
+    if running_frozen():
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def app_work_dir() -> Path:
+    try:
+        return Path.cwd().resolve()
+    except OSError:
+        return executable_dir()
+
+
+def user_data_dir() -> Path:
+    if running_frozen():
+        return executable_dir() / "user_data"
+    return Path(__file__).resolve().parent
+
+
+def package_root_candidates() -> list[Path]:
+    candidates = [
+        app_work_dir(),
+        executable_dir(),
+        executable_dir().parent,
+        Path(__file__).resolve().parent,
+        Path(__file__).resolve().parent.parent,
+    ]
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate
+        key = str(resolved).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(resolved)
+    return unique
+
+
+def packaged_file_candidates(*parts: str) -> list[Path]:
+    return [root.joinpath(*parts) for root in package_root_candidates()]
+
+
+DATA_DIR = user_data_dir()
+SETTINGS_PATH = DATA_DIR / "telemetry_grapher_settings.json"
+SETTINGS_BACKUP_PATH = DATA_DIR / "telemetry_grapher_settings.backup.json"
+CONFIG_PRESET_DIR = DATA_DIR / "config_presets" if running_frozen() else Path(__file__).with_name("config_presets")
+LOG_DIR = DATA_DIR / "logs"
+RELEASE_SETTINGS_PATH = Path(__file__).with_name("telemetry_grapher_release_settings.json")
+LOCAL_ONLY_SETTING_KEYS = {
+    "window_geometry",
+    "window_resize_unlocked",
+    "hud_scale_percent",
+    "main_ui_scale_percent",
+    "display_scale_percent",
+    "hud_standby_hide",
+    "graph_fields",
+    "graph_hidden",
+    "selected_output_effect",
+    "selected_trigger_effect",
+    "selected_detail_type",
+    "trigger_mode_test",
+    "current_preset",
+    "haptic_audio_device",
+    "haptic_audio_device_verified",
+    "dsx_udp_enabled",
+    "dsx_audio_export_enabled",
+    "dsx_audio_device",
+}
+LOCAL_ONLY_SETTING_SUFFIXES = (
+    "_geometry",
+    "_hud_active",
+)
+LOCAL_ONLY_SETTING_PATTERNS = (
+    re.compile(r".*_geometry_\d+$"),
+)
 
 
 def load_settings() -> dict:
@@ -106,17 +189,26 @@ def load_settings() -> dict:
     except (OSError, json.JSONDecodeError):
         return {}
 
+def preset_detail_setting_keys() -> set[str]:
+    keys = set(CONFIG_PRESET_SETTING_KEYS)
+    for global_name in ("DEFAULT_EFFECT_SETTINGS", "DEFAULT_TRIGGER_SETTINGS"):
+        data = globals().get(global_name)
+        if isinstance(data, dict):
+            keys.update(str(key) for key in data.keys())
+    return keys
+
 
 def save_settings(settings: dict, make_backup: bool = False, force: bool = False) -> None:
     if not force:
         settings["_unsaved_changes"] = True
         return
     try:
+        SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
         settings.pop("_unsaved_changes", None)
         if make_backup and SETTINGS_PATH.exists():
             SETTINGS_BACKUP_PATH.write_bytes(SETTINGS_PATH.read_bytes())
         common_settings = json.loads(json.dumps(settings))
-        for key in CONFIG_PRESET_SETTING_KEYS:
+        for key in preset_detail_setting_keys():
             common_settings.pop(key, None)
         common_settings.pop("config_presets", None)
         SETTINGS_PATH.write_text(json.dumps(common_settings, indent=2), encoding="utf-8")
@@ -124,12 +216,65 @@ def save_settings(settings: dict, make_backup: bool = False, force: bool = False
         pass
 
 
+def is_local_only_setting_key(key: str) -> bool:
+    if key in LOCAL_ONLY_SETTING_KEYS:
+        return True
+    if any(key.endswith(suffix) for suffix in LOCAL_ONLY_SETTING_SUFFIXES):
+        return True
+    return any(pattern.match(key) for pattern in LOCAL_ONLY_SETTING_PATTERNS)
+
+
+def release_settings_snapshot(settings: dict) -> dict:
+    snapshot = json.loads(json.dumps(settings))
+    snapshot.pop("_unsaved_changes", None)
+    snapshot.pop("config_presets", None)
+    for key in preset_detail_setting_keys():
+        snapshot.pop(key, None)
+    for key in list(snapshot.keys()):
+        if is_local_only_setting_key(str(key)):
+            snapshot.pop(key, None)
+    return snapshot
+
+
+def export_release_settings(output_path: Path | None = None) -> Path:
+    output_path = output_path or RELEASE_SETTINGS_PATH
+    settings = load_settings()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(release_settings_snapshot(settings), indent=2, ensure_ascii=False), encoding="utf-8")
+    return output_path
+
+
 def valid_geometry(value: object) -> str | None:
     if not isinstance(value, str):
         return None
-    if "x" not in value or "+" not in value:
+    if re.match(r"^\d+x\d+[+-]\d+[+-]\d+$", value) is None:
         return None
     return value
+
+
+def geometry_size(value: object) -> tuple[int, int] | None:
+    geometry = valid_geometry(value)
+    if geometry is None:
+        return None
+    match = re.match(r"^(\d+)x(\d+)[+-]\d+[+-]\d+$", geometry)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def geometry_size_compatible(value: object, reference: object, tolerance: float = 0.25) -> bool:
+    size = geometry_size(value)
+    reference_size = geometry_size(reference)
+    if size is None or reference_size is None:
+        return False
+    width, height = size
+    ref_width, ref_height = reference_size
+    if ref_width <= 0 or ref_height <= 0:
+        return False
+    return (
+        abs(width - ref_width) / ref_width <= tolerance
+        and abs(height - ref_height) / ref_height <= tolerance
+    )
 
 
 def normalized_main_ui_scale_value(value: object, default: int = 100) -> int:
@@ -1125,6 +1270,9 @@ class TriggerStatusWorker(threading.Thread):
 
 class TelemetryApp:
     def __init__(self, host: str, port: int, haptic_event_port: int):
+        self.launch_host = host
+        self.launch_port = int(port)
+        self.launch_haptic_event_port = int(haptic_event_port)
         self.root = tk.Tk()
         self.root.title("Forza Telemetry Grapher - DualSense Haptic Translator")
         self.settings = load_settings()
@@ -1136,6 +1284,15 @@ class TelemetryApp:
                 self.settings.get("display_scale_percent", recommended_display_scale_value())
             )
         )
+        self.hud_snap_enabled = tk.BooleanVar(value=bool(self.settings.get("hud_snap_enabled", True)))
+        self.hud_snap_pixels = tk.IntVar(
+            value=self.clamp_int(
+                self.settings.get("hud_snap_pixels", HUD_SNAP_PIXELS),
+                HUD_SNAP_PIXEL_MIN,
+                HUD_SNAP_PIXEL_MAX,
+            )
+        )
+        self.hud_snap_pixel_text = tk.StringVar(value=str(self.hud_snap_pixels.get()))
         self.hud_scale_text = tk.StringVar()
         self.main_ui_scale_text = tk.StringVar()
         self.display_scale_text = tk.StringVar()
@@ -1165,6 +1322,17 @@ class TelemetryApp:
         )
         self.dsx_audio_export_enabled = tk.BooleanVar(value=bool(self.settings.get("dsx_audio_export_enabled", False)))
         self.dsx_audio_device_text = tk.StringVar(value=str(self.settings.get("dsx_audio_device", "")))
+        self.haptic_audio_device_text = tk.StringVar(
+            value=str(self.settings.get("haptic_audio_device", self.settings.get("dsx_audio_device", "")))
+        )
+        self.haptic_device_popup: tk.Toplevel | None = None
+        self.haptic_device_listbox: tk.Listbox | None = None
+        self.haptic_device_loading = False
+        self.haptic_device_status_text = tk.StringVar(value="")
+        self.haptic_server_status_text = "not selected"
+        self.haptic_server_action_running = False
+        self.haptic_server_action_result: tuple[str, bool, str, bool] | None = None
+        self.haptic_server_process: subprocess.Popen | None = None
         dsx_audio_volume_percent = self.clamp_int(self.settings.get("dsx_audio_volume_percent", 100), 0, 100)
         self.dsx_audio_volume_step = tk.IntVar(value=self.clamp_int(round(dsx_audio_volume_percent / 10), 0, 10))
         self.dsx_audio_volume_text = tk.StringVar(value=f"{self.dsx_audio_volume_step.get() * 10}%")
@@ -1756,7 +1924,7 @@ class TelemetryApp:
             save_controls,
             textvariable=self.current_preset_name,
             bg="#121417",
-            fg="#f1c40f",
+            fg="#d6dde5",
             font=value_font("Consolas", 8, "bold"),
             width=7,
             anchor="w",
@@ -1935,10 +2103,12 @@ class TelemetryApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.bind_all("/", self.on_log_record_shortcut)
+        self.root.bind_all("<ButtonPress-1>", self.on_global_popup_click, add="+")
         self.restore_hud_active_states()
         self.update_dsx_status_text()
         self.root.after(UI_FPS_MS, self.tick)
         self.root.after(RPM_HUD_FPS_MS, self.rpm_hud_tick)
+        self.root.after(650, self.auto_start_haptic_server_for_saved_device)
 
     def close(self) -> None:
         self.save_window_state()
@@ -1961,6 +2131,7 @@ class TelemetryApp:
         self.close_scale_popup("display_scale_popup")
         self.close_preset_popup()
         self.close_save_preset_popup()
+        self.stop_haptic_server_async()
         self.worker.stop_event.set()
         self.trigger_status_worker.stop_event.set()
         for worker in (self.worker, self.trigger_status_worker):
@@ -2093,6 +2264,7 @@ class TelemetryApp:
                 pass
             setattr(self, popup_attr, None)
             return
+        self.close_hud_scale_popups(except_attr=popup_attr)
         popup = tk.Toplevel(self.root)
         popup.overrideredirect(True)
         popup.attributes("-topmost", True)
@@ -2274,6 +2446,45 @@ class TelemetryApp:
                     popup.destroy()
             except tk.TclError:
                 pass
+
+    def close_hud_scale_popups(self, except_attr: str | None = None) -> None:
+        if except_attr != "hud_settings_popup":
+            self.close_hud_settings_popup()
+        for popup_attr in ("hud_scale_popup", "main_ui_scale_popup", "display_scale_popup"):
+            if popup_attr != except_attr:
+                self.close_scale_popup(popup_attr)
+
+    def on_global_popup_click(self, event) -> None:
+        try:
+            widget = event.widget
+        except AttributeError:
+            return
+        popup_attrs = ("hud_settings_popup", "hud_scale_popup", "main_ui_scale_popup", "display_scale_popup")
+        open_popups = []
+        for popup_attr in popup_attrs:
+            popup = getattr(self, popup_attr, None)
+            try:
+                if popup is not None and popup.winfo_exists():
+                    open_popups.append(popup)
+            except tk.TclError:
+                pass
+        if not open_popups:
+            return
+
+        widget_path = str(widget)
+        for popup in open_popups:
+            if widget_path.startswith(str(popup)):
+                return
+
+        for opener_attr in ("hud_button", "hud_scale_button", "main_ui_scale_button", "display_scale_button"):
+            opener = getattr(self, opener_attr, None)
+            try:
+                if opener is not None and opener.winfo_exists() and widget_path.startswith(str(opener)):
+                    return
+            except tk.TclError:
+                pass
+
+        self.close_hud_scale_popups()
 
     def bind_popup_hover_autoclose(self, popup: tk.Toplevel, close_callback, delay_ms: int = 1000) -> None:
         state = {"armed": False, "after_id": None}
@@ -2478,11 +2689,11 @@ class TelemetryApp:
             )
         elif selected:
             button.configure(
-                bg="#f1c40f",
-                fg="#101316",
-                activebackground="#f7dc6f",
-                activeforeground="#101316",
-                highlightbackground="#8a7a2a",
+                bg="#303946",
+                fg="#d6dde5",
+                activebackground="#364251",
+                activeforeground="#d6dde5",
+                highlightbackground="#53606c",
             )
         else:
             button.configure(
@@ -2593,10 +2804,22 @@ class TelemetryApp:
                 pass
 
     def config_preset_effects_locked(self) -> bool:
-        return normalized_config_preset_name(self.current_preset_name.get()) in ("Base", "Soft", "Strong")
+        preset = normalized_config_preset_name(self.current_preset_name.get())
+        return CONFIG_LOCK_REFERENCE_PRESETS and preset in CONFIG_REFERENCE_PRESET_NAMES
+
+    def haptic_audio_device_configured(self) -> bool:
+        return bool(self.haptic_audio_device_text.get().strip())
+
+    def haptic_effects_locked(self) -> bool:
+        return self.config_preset_effects_locked() or not self.haptic_audio_device_configured()
 
     def locked_preset_message(self) -> str:
         return "Editable in User presets only"
+
+    def haptic_lock_message(self) -> str:
+        if not self.haptic_audio_device_configured():
+            return "Select DualSense audio device first"
+        return self.locked_preset_message()
 
     def create_preset_lock_overlay(self, parent: tk.Widget) -> tk.Frame:
         overlay = tk.Frame(
@@ -2606,7 +2829,7 @@ class TelemetryApp:
             highlightbackground="#66717e",
             highlightcolor="#66717e",
         )
-        tk.Label(
+        message_label = tk.Label(
             overlay,
             text=self.locked_preset_message(),
             bg="#202732",
@@ -2614,7 +2837,9 @@ class TelemetryApp:
             font=ui_font("Segoe UI", 9, "bold"),
             anchor="center",
             justify="center",
-        ).pack(padx=ui_px(18), pady=ui_px(10))
+        )
+        message_label.pack(padx=ui_px(18), pady=ui_px(10))
+        overlay.message_label = message_label
         return overlay
 
     @staticmethod
@@ -2626,6 +2851,17 @@ class TelemetryApp:
             overlay.lift()
         else:
             overlay.place_forget()
+
+    @staticmethod
+    def set_preset_lock_overlay_message(overlay: tk.Frame | None, message: str) -> None:
+        if overlay is None:
+            return
+        label = getattr(overlay, "message_label", None)
+        if label is not None:
+            try:
+                label.configure(text=message)
+            except tk.TclError:
+                pass
 
     def select_config_preset(self, preset: str) -> None:
         preset = normalized_config_preset_name(preset)
@@ -2646,6 +2882,13 @@ class TelemetryApp:
     def config_preset_path(self, preset: str) -> Path:
         return CONFIG_PRESET_DIR / self.config_preset_file_name(preset)
 
+    def packaged_config_preset_path(self, preset: str) -> Path | None:
+        file_name = self.config_preset_file_name(preset)
+        for path in packaged_file_candidates("config_presets", file_name):
+            if path.exists():
+                return path
+        return None
+
     def load_config_preset_data(self, preset: str) -> dict | None:
         path = self.config_preset_path(preset)
         try:
@@ -2654,6 +2897,15 @@ class TelemetryApp:
                 return data
         except (OSError, json.JSONDecodeError):
             pass
+
+        packaged_path = self.packaged_config_preset_path(preset)
+        if packaged_path is not None:
+            try:
+                data = json.loads(packaged_path.read_text(encoding="utf-8-sig"))
+                if isinstance(data, dict):
+                    return data
+            except (OSError, json.JSONDecodeError):
+                pass
 
         legacy_presets = self.settings.get("config_presets")
         if isinstance(legacy_presets, dict):
@@ -2711,7 +2963,7 @@ class TelemetryApp:
 
     def save_settings_to_config_preset(self, preset: str) -> None:
         preset = normalized_config_preset_name(preset)
-        if preset in ("Base", "Soft", "Strong"):
+        if CONFIG_LOCK_REFERENCE_PRESETS and preset in CONFIG_REFERENCE_PRESET_NAMES:
             self.close_save_preset_popup()
             save_settings(self.settings, make_backup=True, force=True)
             self.update_save_button_state()
@@ -2767,16 +3019,25 @@ class TelemetryApp:
             return
         ratio = float(new_percent) / float(old_percent)
         for key, default_geometry, hud, min_width, min_height in self.hud_geometry_specs():
-            target_geometry = valid_geometry(self.settings.get(self.hud_geometry_key(key, new_percent)))
+            target_geometry = self.saved_hud_geometry_for_scale(key, default_geometry, new_percent)
             if hud is not None and self.hud_window_exists(hud):
-                current_geometry = hud.geometry()
+                current_geometry = self.normalized_hud_geometry_for_scale(key, default_geometry, hud.geometry(), old_percent)
                 if target_geometry is None:
                     target_geometry = self.scaled_hud_geometry(current_geometry, ratio, min_width, min_height)
                 hud.geometry(target_geometry)
+                try:
+                    hud.update_idletasks()
+                except tk.TclError:
+                    pass
                 self.set_hud_geometry(key, target_geometry, new_percent)
             else:
                 if target_geometry is None:
-                    current_geometry = self.get_hud_geometry(key, default_geometry, old_percent)
+                    current_geometry = self.normalized_hud_geometry_for_scale(
+                        key,
+                        default_geometry,
+                        self.get_hud_geometry(key, default_geometry, old_percent),
+                        old_percent,
+                    )
                     target_geometry = self.scaled_hud_geometry(current_geometry, ratio, min_width, min_height)
                 self.set_hud_geometry(key, target_geometry, new_percent)
         self.schedule_hud_redraw_after_scale()
@@ -2791,25 +3052,143 @@ class TelemetryApp:
             ("engine_hud_geometry", "76x160+720+120", self.engine_hud_window, 76, 160),
         )
 
+    def hud_display_move_specs(self) -> dict[str, tuple[str, str, str, tk.Toplevel | None, int, int]]:
+        return {
+            "pedal": ("Pedal", "pedal_hud_geometry", "54x160+80+120", self.hud_window, 36, 90),
+            "gforce": ("G-force", "gforce_hud_geometry", "160x160+150+120", self.gforce_hud_window, 90, 90),
+            "tire": ("Tire", "tire_hud_geometry", "112x160+320+120", self.tire_hud_window, 80, 120),
+            "steer": ("Steer", "steer_hud_geometry", "68x160+450+120", self.steer_hud_window, 48, 120),
+            "rpm": ("RPM", "rpm_hud_geometry", "160x160+540+120", self.rpm_hud_window, 90, 90),
+            "engine": ("Engine", "engine_hud_geometry", "76x160+720+120", self.engine_hud_window, 76, 160),
+            "drift": ("Drift", "drift_debug_hud_geometry", "360x236+1040+120", self.drift_debug_hud_window, 330, 220),
+        }
+
     def hud_geometry_key(self, key: str, percent: int | None = None) -> str:
         if percent is None:
             percent = self.hud_scale_percent.get()
         return f"{key}_{self.normalized_hud_scale_percent(percent)}"
 
-    def get_hud_geometry(self, key: str, default_geometry: str, percent: int | None = None) -> str:
+    def hud_reference_geometry(self, default_geometry: str, percent: int | None = None) -> str:
+        if percent is None:
+            percent = self.hud_scale_percent.get()
+        ratio = self.normalized_hud_scale_percent(percent) / 100.0
+        return self.scaled_hud_geometry(default_geometry, ratio, 1, 1)
+
+    @staticmethod
+    def geometry_with_reference_size(geometry: str, reference: str) -> str:
+        geometry_match = re.match(r"^\d+x\d+([+-]\d+[+-]\d+)$", geometry)
+        reference_match = re.match(r"^(\d+)x(\d+)[+-]\d+[+-]\d+$", reference)
+        if not geometry_match or not reference_match:
+            return reference
+        return f"{reference_match.group(1)}x{reference_match.group(2)}{geometry_match.group(1)}"
+
+    def normalized_hud_geometry_for_scale(
+        self,
+        key: str,
+        default_geometry: str,
+        geometry: object,
+        percent: int | None = None,
+    ) -> str:
+        normalized_percent = self.normalized_hud_scale_percent(
+            self.hud_scale_percent.get() if percent is None else percent
+        )
+        reference = self.hud_reference_geometry(default_geometry, normalized_percent)
+        candidate = valid_geometry(geometry)
+        if candidate is None:
+            return reference
+        if geometry_size_compatible(candidate, reference):
+            return candidate
+        return self.geometry_with_reference_size(candidate, reference)
+
+    def hud_default_geometry_for_key(self, key: str) -> str | None:
+        for spec_key, default_geometry, _hud, _min_width, _min_height in self.hud_geometry_specs():
+            if spec_key == key:
+                return default_geometry
+        return None
+
+    def saved_hud_geometry_for_scale(self, key: str, default_geometry: str, percent: int | None = None) -> str | None:
         scaled = valid_geometry(self.settings.get(self.hud_geometry_key(key, percent)))
+        if scaled is not None:
+            return self.normalized_hud_geometry_for_scale(key, default_geometry, scaled, percent)
+        return None
+
+    def get_hud_geometry(self, key: str, default_geometry: str, percent: int | None = None) -> str:
+        if percent is None:
+            percent = self.hud_scale_percent.get()
+        normalized_percent = self.normalized_hud_scale_percent(percent)
+        reference = self.hud_reference_geometry(default_geometry, normalized_percent)
+        scaled = self.saved_hud_geometry_for_scale(key, default_geometry, normalized_percent)
+        if scaled is not None:
+            return scaled
         legacy = valid_geometry(self.settings.get(key))
-        return scaled or legacy or default_geometry
+        if normalized_percent == 100 and legacy is not None:
+            return self.normalized_hud_geometry_for_scale(key, default_geometry, legacy, normalized_percent)
+        return reference
 
     def set_hud_geometry(self, key: str, geometry: str, percent: int | None = None) -> None:
         geometry = valid_geometry(geometry) or geometry
-        self.settings[self.hud_geometry_key(key, percent)] = geometry
-        self.settings[key] = geometry
+        if percent is None:
+            percent = self.hud_scale_percent.get()
+        normalized_percent = self.normalized_hud_scale_percent(percent)
+        default_geometry = self.hud_default_geometry_for_key(key)
+        if default_geometry is not None:
+            geometry = self.normalized_hud_geometry_for_scale(key, default_geometry, geometry, normalized_percent)
+        self.settings[self.hud_geometry_key(key, normalized_percent)] = geometry
+        if normalized_percent == 100:
+            self.settings[key] = geometry
 
     def save_current_hud_geometries(self, percent: int | None = None) -> None:
         for key, _default_geometry, hud, _min_width, _min_height in self.hud_geometry_specs():
             if hud is not None and self.hud_window_exists(hud):
                 self.set_hud_geometry(key, hud.geometry(), percent)
+
+    @staticmethod
+    def moved_geometry_to_next_work_area(
+        geometry: str,
+        work_areas: list[tuple[int, int, int, int]],
+        min_width: int,
+        min_height: int,
+    ) -> tuple[str, int, int] | None:
+        match = re.match(r"^(\d+)x(\d+)([+-]\d+)([+-]\d+)$", geometry)
+        if not match or len(work_areas) < 2:
+            return None
+        width = max(min_width, int(match.group(1)))
+        height = max(min_height, int(match.group(2)))
+        win_x = int(match.group(3))
+        win_y = int(match.group(4))
+        center_x = win_x + width / 2.0
+        center_y = win_y + height / 2.0
+
+        def contains(area: tuple[int, int, int, int]) -> bool:
+            left, top, right, bottom = area
+            return left <= center_x < right and top <= center_y < bottom
+
+        current_index = next((idx for idx, area in enumerate(work_areas) if contains(area)), -1)
+        if current_index < 0:
+            def distance(area: tuple[int, int, int, int]) -> float:
+                left, top, right, bottom = area
+                area_x = (left + right) / 2.0
+                area_y = (top + bottom) / 2.0
+                return (area_x - center_x) ** 2 + (area_y - center_y) ** 2
+
+            current_index = min(range(len(work_areas)), key=lambda idx: distance(work_areas[idx]))
+
+        current_area = work_areas[current_index]
+        target_index = (current_index + 1) % len(work_areas)
+        target_area = work_areas[target_index]
+        cur_left, cur_top, cur_right, cur_bottom = current_area
+        tgt_left, tgt_top, tgt_right, tgt_bottom = target_area
+        cur_span_x = max(1, cur_right - cur_left - width)
+        cur_span_y = max(1, cur_bottom - cur_top - height)
+        x_ratio = max(0.0, min(1.0, (win_x - cur_left) / cur_span_x))
+        y_ratio = max(0.0, min(1.0, (win_y - cur_top) / cur_span_y))
+        tgt_span_x = max(0, tgt_right - tgt_left - width)
+        tgt_span_y = max(0, tgt_bottom - tgt_top - height)
+        new_x = int(round(tgt_left + tgt_span_x * x_ratio))
+        new_y = int(round(tgt_top + tgt_span_y * y_ratio))
+        new_x = max(tgt_left, min(new_x, max(tgt_left, tgt_right - width)))
+        new_y = max(tgt_top, min(new_y, max(tgt_top, tgt_bottom - height)))
+        return f"{width}x{height}{new_x:+d}{new_y:+d}", current_index, target_index
 
     @staticmethod
     def scaled_hud_geometry(geometry: str, ratio: float, min_width: int, min_height: int) -> str:
@@ -2819,6 +3198,17 @@ class TelemetryApp:
         width = max(min_width, int(round(int(match.group(1)) * ratio)))
         height = max(min_height, int(round(int(match.group(2)) * ratio)))
         return f"{width}x{height}{match.group(3)}"
+
+    @staticmethod
+    def scaled_hud_reset_geometry(geometry: str, ratio: float, min_width: int, min_height: int) -> str:
+        match = re.match(r"^(\d+)x(\d+)([+-]\d+)([+-]\d+)$", geometry)
+        if not match:
+            return geometry
+        width = max(min_width, int(round(int(match.group(1)) * ratio)))
+        height = max(min_height, int(round(int(match.group(2)) * ratio)))
+        x = int(round(int(match.group(3)) * ratio))
+        y = int(round(int(match.group(4)) * ratio))
+        return f"{width}x{height}{x:+d}{y:+d}"
 
     def engine_hud_min_size(self, percent: int | None = None) -> tuple[int, int]:
         if percent is None:
@@ -2844,14 +3234,25 @@ class TelemetryApp:
         self.draw_rpm_hud()
         self.draw_engine_hud()
 
+    def settle_hud_windows_after_scale(self) -> None:
+        for _key, _default_geometry, hud, _min_width, _min_height in self.hud_geometry_specs():
+            if hud is not None and self.hud_window_exists(hud):
+                try:
+                    hud.update_idletasks()
+                except tk.TclError:
+                    pass
+        self.draw_all_huds()
+
     def schedule_hud_redraw_after_scale(self) -> None:
         try:
             if self.rpm_hud_window is not None and self.rpm_hud_window.winfo_exists():
                 self.rpm_hud_needle_angles.clear()
                 self.rpm_hud_display_rpm = None
                 self.rpm_hud_zero_dropouts = 0
-            self.root.after(80, self.draw_all_huds)
-            self.root.after(180, self.draw_all_huds)
+            self.root.after_idle(self.settle_hud_windows_after_scale)
+            self.root.after(80, self.settle_hud_windows_after_scale)
+            self.root.after(180, self.settle_hud_windows_after_scale)
+            self.root.after(360, self.settle_hud_windows_after_scale)
         except tk.TclError:
             pass
 
@@ -2890,6 +3291,22 @@ class TelemetryApp:
         self.value_text.set("Main UI Scale preset saved. Restarting...")
         self.root.after(150, lambda selected_percent=percent: self.restart_for_main_ui_scale(selected_percent))
 
+    def relaunch_command(self) -> list[str]:
+        return [
+            sys.executable,
+            "--host",
+            str(self.launch_host),
+            "--port",
+            str(self.launch_port),
+            "--haptic-event-port",
+            str(self.launch_haptic_event_port),
+        ]
+
+    def relaunch_cwd(self) -> Path:
+        if running_frozen():
+            return executable_dir()
+        return Path(__file__).resolve().parent
+
     def restart_for_main_ui_scale(self, percent: int) -> None:
         percent = self.normalized_main_ui_scale_percent(percent)
         self.main_ui_scale_percent.set(percent)
@@ -2899,10 +3316,12 @@ class TelemetryApp:
         save_settings(self.settings, make_backup=True, force=True)
         self.shutdown_runtime()
         time.sleep(0.25)
-        launch_args = [sys.executable, *sys.argv]
         subprocess.Popen(
-            launch_args,
-            cwd=str(Path(__file__).resolve().parent),
+            self.relaunch_command(),
+            cwd=str(self.relaunch_cwd()),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         )
         self.root.destroy()
@@ -2949,10 +3368,12 @@ class TelemetryApp:
         save_settings(self.settings, make_backup=True, force=True)
         self.shutdown_runtime()
         time.sleep(0.25)
-        launch_args = [sys.executable, *sys.argv]
         subprocess.Popen(
-            launch_args,
-            cwd=str(Path(__file__).resolve().parent),
+            self.relaunch_command(),
+            cwd=str(self.relaunch_cwd()),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         )
         self.root.destroy()
@@ -3032,12 +3453,13 @@ class TelemetryApp:
             self.hud_settings_popup = None
             return
 
+        self.close_hud_scale_popups(except_attr="hud_settings_popup")
         popup = tk.Toplevel(self.root)
         popup.overrideredirect(True)
         popup.attributes("-topmost", True)
         popup.configure(bg="#171b20", highlightthickness=1, highlightbackground="#27313a")
-        width = ui_px(260)
-        height = ui_px(340)
+        width = ui_px(220)
+        height = ui_px(410)
         x = self.root.winfo_rootx() + ui_px(190)
         y = self.root.winfo_rooty() + ui_px(44)
         x, y = self.popup_position_near_root(width, height, preferred_x=x, preferred_y=y)
@@ -3071,6 +3493,69 @@ class TelemetryApp:
             padx=ui_px(8),
             pady=ui_px(4),
         ).pack(fill="x", pady=(0, ui_px(8)))
+        snap_row = tk.Frame(body, bg="#171b20")
+        snap_row.pack(fill="x", pady=(0, ui_px(8)))
+        self.hud_snap_button = tk.Button(
+            snap_row,
+            command=self.toggle_hud_snap,
+            relief="raised",
+            bd=1,
+            highlightthickness=1,
+            overrelief="raised",
+            font=ui_font("Segoe UI", 7, "bold"),
+            padx=ui_px(5),
+            pady=ui_px(3),
+        )
+        self.hud_snap_button.grid(row=0, column=0, sticky="w")
+        tk.Label(
+            snap_row,
+            text="Snap Pixel",
+            bg="#171b20",
+            fg="#8b96a3",
+            font=ui_font("Segoe UI", 7, "bold"),
+            anchor="w",
+        ).grid(row=0, column=1, sticky="w", padx=(ui_px(5), ui_px(3)))
+        validate_digits = (self.root.register(self.validate_hud_snap_pixel_text), "%P")
+        self.hud_snap_pixel_entry = tk.Entry(
+            snap_row,
+            textvariable=self.hud_snap_pixel_text,
+            width=4,
+            bg="#101316",
+            fg="#f1c40f",
+            insertbackground="#f1c40f",
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground="#53606c",
+            highlightcolor="#f1c40f",
+            font=value_font("Consolas", 8, "bold"),
+            justify="right",
+            validate="key",
+            validatecommand=validate_digits,
+        )
+        self.hud_snap_pixel_entry.grid(row=0, column=2, sticky="w")
+        self.hud_snap_pixel_entry.bind("<Return>", lambda _event: self.apply_hud_snap_pixel_text())
+        self.hud_snap_pixel_entry.bind("<FocusOut>", lambda _event: self.apply_hud_snap_pixel_text())
+        for column, text, delta in ((3, "-", -1), (4, "+", 1)):
+            tk.Button(
+                snap_row,
+                text=text,
+                command=lambda value=delta: self.adjust_hud_snap_pixels(value),
+                bg="#252c35",
+                fg="#d6dde5",
+                activebackground="#303946",
+                activeforeground="#f1c40f",
+                relief="raised",
+                bd=1,
+                highlightthickness=1,
+                highlightbackground="#53606c",
+                highlightcolor="#f1c40f",
+                overrelief="raised",
+                font=ui_font("Segoe UI", 7, "bold"),
+                width=2,
+                padx=0,
+                pady=ui_px(3),
+            ).grid(row=0, column=column, sticky="w", padx=(ui_px(3), 0))
+        self.update_hud_snap_controls()
         tk.Frame(body, bg="#27313a", height=1).pack(fill="x", pady=(0, ui_px(8)))
         tk.Label(
             body,
@@ -3091,8 +3576,12 @@ class TelemetryApp:
             ("Engine", self.toggle_engine_hud, "engine"),
             ("Drift", self.toggle_drift_debug_hud, "drift"),
         ):
+            row = tk.Frame(body, bg="#171b20")
+            row.pack(fill="x", pady=(0, ui_px(3)))
+            row.grid_columnconfigure(0, weight=0)
+            row.grid_columnconfigure(1, weight=1)
             button = tk.Button(
-                body,
+                row,
                 text=label,
                 command=command,
                 bg="#1b2027",
@@ -3107,10 +3596,29 @@ class TelemetryApp:
                 overrelief="raised",
                 font=ui_font("Segoe UI", 8, "bold"),
                 anchor="w",
-                padx=ui_px(10),
+                width=8,
+                padx=ui_px(5),
                 pady=ui_px(3),
             )
-            button.pack(fill="x", pady=(0, ui_px(3)))
+            button.grid(row=0, column=0, sticky="w")
+            tk.Button(
+                row,
+                text="Move Display",
+                command=lambda hud_key=key: self.move_hud_to_next_display(hud_key),
+                bg="#252c35",
+                fg="#d6dde5",
+                activebackground="#303946",
+                activeforeground="#f1c40f",
+                relief="raised",
+                bd=1,
+                highlightthickness=1,
+                highlightbackground="#53606c",
+                highlightcolor="#f1c40f",
+                overrelief="raised",
+                font=ui_font("Segoe UI", 7, "bold"),
+                padx=ui_px(5),
+                pady=ui_px(3),
+            ).grid(row=0, column=1, sticky="e", padx=(ui_px(4), 0))
             self.hud_settings_buttons[key] = button
 
         self.hud_settings_popup = popup
@@ -3153,6 +3661,90 @@ class TelemetryApp:
                 )
             except tk.TclError:
                 continue
+
+    def validate_hud_snap_pixel_text(self, proposed: str) -> bool:
+        return proposed == "" or proposed.isdigit()
+
+    def current_hud_snap_pixels(self) -> int:
+        return self.clamp_int(self.hud_snap_pixels.get(), HUD_SNAP_PIXEL_MIN, HUD_SNAP_PIXEL_MAX)
+
+    def update_hud_snap_controls(self) -> None:
+        if not hasattr(self, "hud_snap_button"):
+            return
+        enabled = bool(self.hud_snap_enabled.get())
+        try:
+            self.hud_snap_button.configure(
+                text="Snap HUD ON" if enabled else "Snap HUD OFF",
+                bg="#f1c40f" if enabled else "#252c35",
+                fg="#101316" if enabled else "#d6dde5",
+                activebackground="#f7dc6f" if enabled else "#303946",
+                activeforeground="#101316" if enabled else "#f1c40f",
+                highlightbackground="#8a7a2a" if enabled else "#53606c",
+                highlightcolor="#101316" if enabled else "#f1c40f",
+            )
+            if hasattr(self, "hud_snap_pixel_entry"):
+                self.hud_snap_pixel_entry.configure(fg="#f1c40f" if enabled else "#8b96a3")
+        except tk.TclError:
+            pass
+
+    def toggle_hud_snap(self) -> None:
+        enabled = not bool(self.hud_snap_enabled.get())
+        self.hud_snap_enabled.set(enabled)
+        self.settings["hud_snap_enabled"] = enabled
+        save_settings(self.settings, force=True)
+        self.update_hud_snap_controls()
+        self.value_text.set(f"Snap HUD {'ON' if enabled else 'OFF'}")
+
+    def set_hud_snap_pixels(self, value: object) -> None:
+        pixels = self.clamp_int(value, HUD_SNAP_PIXEL_MIN, HUD_SNAP_PIXEL_MAX)
+        self.hud_snap_pixels.set(pixels)
+        self.hud_snap_pixel_text.set(str(pixels))
+        self.settings["hud_snap_pixels"] = pixels
+        save_settings(self.settings, force=True)
+        self.value_text.set(f"Snap Pixel: {pixels}px")
+
+    def apply_hud_snap_pixel_text(self) -> None:
+        text = self.hud_snap_pixel_text.get().strip()
+        self.set_hud_snap_pixels(text if text else self.hud_snap_pixels.get())
+
+    def adjust_hud_snap_pixels(self, delta: int) -> None:
+        self.set_hud_snap_pixels(self.current_hud_snap_pixels() + int(delta))
+
+    def move_hud_to_next_display(self, hud_key: str) -> None:
+        work_areas = windows_monitor_work_areas()
+        if len(work_areas) < 2:
+            self.value_text.set("HUD Display skipped: single display detected.")
+            return
+        specs = self.hud_display_move_specs()
+        spec = specs.get(hud_key)
+        if spec is None:
+            self.value_text.set("HUD Display failed: unknown HUD.")
+            return
+        label, geometry_key, default_geometry, hud, min_width, min_height = spec
+        try:
+            if hud is not None and self.hud_window_exists(hud):
+                hud.update_idletasks()
+                geometry = hud.geometry()
+            else:
+                geometry = self.get_hud_geometry(geometry_key, default_geometry)
+            moved = self.moved_geometry_to_next_work_area(geometry, work_areas, min_width, min_height)
+            if moved is None:
+                self.value_text.set(f"{label} HUD Display failed: invalid geometry.")
+                return
+            new_geometry, current_index, target_index = moved
+            if geometry_key == "engine_hud_geometry":
+                new_geometry = self.normalized_engine_hud_geometry(new_geometry)
+            elif geometry_key == "drift_debug_hud_geometry":
+                new_geometry = self.normalized_drift_debug_hud_geometry(new_geometry)
+            self.set_hud_geometry(geometry_key, new_geometry)
+            if hud is not None and self.hud_window_exists(hud):
+                hud.geometry(new_geometry)
+                hud.update_idletasks()
+            save_settings(self.settings, force=True)
+            self.update_save_button_state()
+            self.value_text.set(f"{label} HUD Display: {current_index + 1} -> {target_index + 1}")
+        except tk.TclError as exc:
+            self.value_text.set(f"{label} HUD Display failed: {exc}")
 
     def toggle_hud(self) -> None:
         if self.hud_window is not None and self.hud_window.winfo_exists():
@@ -3597,18 +4189,41 @@ class TelemetryApp:
         self.move_hud_window_snapped(self.hud_window, event.x_root - offset_x, event.y_root - offset_y)
 
     def move_hud_window_snapped(self, hud: tk.Toplevel, x: int | float, y: int | float) -> None:
-        snap = HUD_SNAP_PIXELS
         try:
-            screen_w = hud.winfo_screenwidth()
-            screen_h = hud.winfo_screenheight()
             width = max(1, hud.winfo_width())
             height = max(1, hud.winfo_height())
         except tk.TclError:
             return
-        snapped_x = int(round(float(x) / snap) * snap)
-        snapped_y = int(round(float(y) / snap) * snap)
-        snapped_x = max(0, min(snapped_x, max(0, screen_w - width)))
-        snapped_y = max(0, min(snapped_y, max(0, screen_h - height)))
+        if bool(self.hud_snap_enabled.get()):
+            snap = self.current_hud_snap_pixels()
+            snapped_x = int(round(float(x) / snap) * snap)
+            snapped_y = int(round(float(y) / snap) * snap)
+        else:
+            snapped_x = int(round(float(x)))
+            snapped_y = int(round(float(y)))
+        work_areas = windows_monitor_work_areas()
+        if work_areas:
+            center_x = snapped_x + width / 2.0
+            center_y = snapped_y + height / 2.0
+
+            def distance(area: tuple[int, int, int, int]) -> float:
+                left, top, right, bottom = area
+                area_x = (left + right) / 2.0
+                area_y = (top + bottom) / 2.0
+                return (area_x - center_x) ** 2 + (area_y - center_y) ** 2
+
+            area = min(work_areas, key=distance)
+            left, top, right, bottom = area
+            snapped_x = max(left, min(snapped_x, max(left, right - width)))
+            snapped_y = max(top, min(snapped_y, max(top, bottom - height)))
+        else:
+            try:
+                screen_w = hud.winfo_screenwidth()
+                screen_h = hud.winfo_screenheight()
+            except tk.TclError:
+                return
+            snapped_x = max(0, min(snapped_x, max(0, screen_w - width)))
+            snapped_y = max(0, min(snapped_y, max(0, screen_h - height)))
         hud.geometry(f"+{snapped_x}+{snapped_y}")
 
     def draw_hud(self) -> None:
@@ -4525,12 +5140,7 @@ class TelemetryApp:
             pass
         percent = self.normalized_hud_scale_percent(self.hud_scale_percent.get())
         min_width, min_height = self.engine_hud_min_size(percent)
-        default_geometry = self.scaled_hud_geometry(
-            "76x160+720+120",
-            percent / 100.0,
-            min_width,
-            min_height,
-        )
+        default_geometry = "76x160+720+120"
         geometry = self.normalized_engine_hud_geometry(
             self.get_hud_geometry("engine_hud_geometry", default_geometry),
             percent,
@@ -6014,6 +6624,7 @@ class TelemetryApp:
         self.settings["selected_detail_type"] = self.selected_detail_type.get()
         self.settings["udp_port"] = self.normalized_udp_port(self.udp_port_text.get(), self.telemetry_port)
         self.settings["drift_relief_enabled"] = bool(self.drift_relief_enabled.get())
+        self.settings["haptic_audio_device"] = self.haptic_audio_device_text.get().strip()
         self.save_dsx_options()
         if self.drift_debug_hud_window is not None and self.hud_window_exists(self.drift_debug_hud_window):
             self.set_hud_geometry("drift_debug_hud_geometry", self.drift_debug_hud_window.geometry())
@@ -6025,11 +6636,6 @@ class TelemetryApp:
         try:
             self.save_window_state()
             preset = normalized_config_preset_name(self.current_preset_name.get())
-            if preset in ("Base", "Soft", "Strong"):
-                save_settings(self.settings, make_backup=True, force=True)
-                self.update_save_button_state()
-                self.value_text.set(f"Common UI settings saved. {preset} effect preset is locked.")
-                return
             self.save_settings_to_config_preset(preset)
         except OSError as exc:
             self.value_text.set(f"Settings save failed: {exc}")
@@ -6453,6 +7059,580 @@ class TelemetryApp:
         self.on_dsx_options_entered()
         self.send_haptic_master_gain(percent)
 
+    def show_haptic_device_popup(self) -> None:
+        if self.haptic_device_popup is not None:
+            self.close_haptic_device_popup()
+            return
+        width = ui_px(546)
+        height = ui_px(416)
+        try:
+            self.root.update_idletasks()
+            x = self.root.winfo_rootx() + max(0, (self.root.winfo_width() - width) // 2)
+            y = self.root.winfo_rooty() + max(0, (self.root.winfo_height() - height) // 2)
+        except tk.TclError:
+            x, y = self.popup_position_near_root(width, height)
+
+        popup = tk.Toplevel(self.root)
+        popup.overrideredirect(True)
+        popup.attributes("-topmost", True)
+        popup.configure(bg="#171b20", highlightthickness=1, highlightbackground="#53606c")
+        popup.geometry(f"{width}x{height}+{x}+{y}")
+        body = tk.Frame(popup, bg="#171b20")
+        body.pack(fill="both", expand=True, padx=ui_px(12), pady=ui_px(12))
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_rowconfigure(2, weight=1)
+
+        tk.Label(
+            body,
+            text="Select DualSense Audio Device",
+            bg="#171b20",
+            fg="#d6dde5",
+            font=ui_font("Segoe UI", 11, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew")
+        tk.Label(
+            body,
+            text="Select the Windows playback device that exposes DualSense haptic channels 3/4.",
+            bg="#171b20",
+            fg="#8b96a3",
+            font=ui_font("Segoe UI", 8, "bold"),
+            anchor="w",
+            wraplength=max(220, width - ui_px(28)),
+        ).grid(row=1, column=0, sticky="ew", pady=(ui_px(4), ui_px(8)))
+
+        listbox = tk.Listbox(
+            body,
+            bg="#1b2027",
+            fg="#d6dde5",
+            selectbackground="#f1c40f",
+            selectforeground="#101316",
+            activestyle="none",
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground="#303946",
+            font=value_font("Consolas", 9),
+        )
+        listbox.grid(row=2, column=0, sticky="nsew")
+        listbox.insert("end", "Finding devices, please wait...")
+        listbox.selection_set(0)
+        self.haptic_device_listbox = listbox
+
+        status_label = tk.Label(
+            body,
+            textvariable=self.haptic_device_status_text,
+            bg="#171b20",
+            fg="#f1c40f",
+            font=ui_font("Segoe UI", 10, "bold"),
+            anchor="w",
+            relief="flat",
+            bd=0,
+            padx=ui_px(4),
+            pady=ui_px(12),
+            wraplength=max(220, width - ui_px(28)),
+        )
+        status_label.grid(row=3, column=0, sticky="ew", pady=(ui_px(8), 0))
+
+        controls = tk.Frame(body, bg="#171b20")
+        controls.grid(row=4, column=0, sticky="ew", pady=(ui_px(8), 0))
+        controls.grid_columnconfigure(0, weight=1)
+        tk.Button(
+            controls,
+            text="Test & Save",
+            command=self.test_selected_haptic_device,
+            bg="#1d2a3a",
+            fg="#58a6ff",
+            activebackground="#2f81f7",
+            activeforeground="#eef6ff",
+            relief="raised",
+            bd=1,
+            highlightthickness=1,
+            highlightbackground="#2f81f7",
+            font=ui_font("Segoe UI", 8, "bold"),
+            padx=ui_px(8),
+            pady=ui_px(4),
+        ).grid(row=0, column=0, sticky="w")
+        for text, command, column, bg, fg in (
+            ("Refresh", self.refresh_haptic_device_popup, 1, "#252c35", "#d6dde5"),
+            ("Save Device", self.apply_haptic_device_selection, 2, "#f1c40f", "#101316"),
+            ("Cancel", self.close_haptic_device_popup, 3, "#252c35", "#d6dde5"),
+        ):
+            tk.Button(
+                controls,
+                text=text,
+                command=command,
+                bg=bg,
+                fg=fg,
+                    activebackground="#f7dc6f" if text == "Save Device" else "#303946",
+                    activeforeground="#101316" if text == "Save Device" else "#f1c40f",
+                relief="raised",
+                bd=1,
+                highlightthickness=1,
+                    highlightbackground="#8a7a2a" if text == "Save Device" else "#53606c",
+                font=ui_font("Segoe UI", 8, "bold"),
+                padx=ui_px(8),
+                pady=ui_px(4),
+            ).grid(row=0, column=column, sticky="e", padx=(ui_px(6), 0))
+
+        listbox.bind("<Double-Button-1>", lambda _event: self.apply_haptic_device_selection())
+        popup.bind("<Escape>", lambda _event: self.close_haptic_device_popup())
+        self.haptic_device_popup = popup
+        self.haptic_device_loading = True
+        self.haptic_device_status_text.set("Finding devices, please wait...")
+        popup.focus_force()
+        try:
+            popup.update_idletasks()
+            self.root.after(80, self.populate_haptic_device_popup)
+        except tk.TclError:
+            pass
+
+    @staticmethod
+    def sorted_haptic_audio_devices(devices: list[str]) -> list[str]:
+        unique = []
+        seen = set()
+        for device in devices:
+            name = str(device).strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            unique.append(name)
+        return sorted(unique, key=lambda name: (0 if "dualsense" in name.lower() else 1, name.lower()))
+
+    def populate_haptic_device_popup(self) -> None:
+        listbox = self.haptic_device_listbox
+        popup = self.haptic_device_popup
+        if listbox is None or popup is None:
+            return
+        try:
+            devices = self.sorted_haptic_audio_devices(self.enumerate_audio_output_devices(force=True))
+            current = self.haptic_audio_device_text.get().strip()
+            if current and current not in devices:
+                devices.insert(0, current)
+            if not devices:
+                devices = ["DualSense"]
+            listbox.delete(0, "end")
+            for device in devices:
+                listbox.insert("end", device)
+            index = devices.index(current) if current and current in devices else 0
+            listbox.selection_clear(0, "end")
+            listbox.selection_set(index)
+            listbox.see(index)
+            self.haptic_device_status_text.set("")
+        except tk.TclError:
+            return
+        finally:
+            self.haptic_device_loading = False
+
+    def refresh_haptic_device_popup(self) -> None:
+        popup = self.haptic_device_popup
+        if popup is not None:
+            self.close_haptic_device_popup()
+            self.show_haptic_device_popup()
+
+    def selected_haptic_device_from_popup(self) -> str:
+        if self.haptic_device_loading:
+            return ""
+        listbox = self.haptic_device_listbox
+        if listbox is None:
+            return ""
+        selection = listbox.curselection()
+        if not selection:
+            return ""
+        device = str(listbox.get(selection[0])).strip()
+        if device == "Finding devices, please wait...":
+            return ""
+        return device
+
+    def save_haptic_audio_device_selection(self, device: str) -> bool:
+        if not device:
+            return False
+        self.haptic_audio_device_text.set(device)
+        self.settings["haptic_audio_device"] = device
+        self.settings["dsx_audio_device"] = device
+        if self.settings.get("haptic_audio_device_verified") != device:
+            self.settings.pop("haptic_audio_device_verified", None)
+        self.dsx_audio_device_text.set(device)
+        save_settings(self.settings, make_backup=True, force=True)
+        self.update_save_button_state()
+        self.update_preset_lock_state()
+        return True
+
+    def apply_haptic_device_selection(self) -> None:
+        if self.haptic_device_loading:
+            self.value_text.set("Finding devices, please wait...")
+            return
+        device = self.selected_haptic_device_from_popup()
+        if not self.save_haptic_audio_device_selection(device):
+            return
+        self.close_haptic_device_popup()
+        self.value_text.set("DualSense audio device saved. Use Test & Save to verify and start output.")
+
+    def test_selected_haptic_device(self) -> None:
+        if self.haptic_device_loading:
+            self.value_text.set("Finding devices, please wait...")
+            return
+        if self.haptic_server_action_running:
+            self.value_text.set("Connecting DualSense device. This can take a few seconds; please wait.")
+            return
+        device = self.selected_haptic_device_from_popup()
+        if not self.save_haptic_audio_device_selection(device):
+            self.value_text.set("Select a DualSense audio device before testing.")
+            return
+        self.start_haptic_server_for_device(
+            device,
+            action="test",
+            send_test=True,
+            validate_saved_device=False,
+            status_message="Connecting DualSense device. This can take a few seconds; please wait.",
+        )
+
+    @staticmethod
+    def powershell_single_quote(value: Path | str) -> str:
+        return "'" + str(value).replace("'", "''") + "'"
+
+    @staticmethod
+    def is_likely_dualsense_audio_device(device: str) -> bool:
+        name = str(device).lower()
+        return "dualsense" in name or "wireless controller" in name
+
+    def auto_start_haptic_server_for_saved_device(self) -> None:
+        device = self.haptic_audio_device_text.get().strip()
+        if not device:
+            self.haptic_server_status_text = "select device"
+            return
+        if self.haptic_server_action_running:
+            return
+        self.start_haptic_server_for_device(
+            device,
+            action="auto",
+            send_test=False,
+            validate_saved_device=True,
+            status_message="Checking DualSense audio device...",
+        )
+
+    def haptic_server_powershell(self) -> str:
+        system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+        powershell_path = system_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        return str(powershell_path if powershell_path.exists() else "powershell.exe")
+
+    def haptic_server_executable_path(self) -> Path | None:
+        for path in packaged_file_candidates("runtime", "DualSenseOutputServer.exe"):
+            if path.exists():
+                return path
+        return None
+
+    def haptic_server_debug_dll_path(self) -> Path | None:
+        for path in packaged_file_candidates(
+            "dualsense_output_server",
+            "bin",
+            "Debug",
+            "net8.0-windows",
+            "DualSenseOutputServer.dll",
+        ):
+            if path.exists():
+                return path
+        return None
+
+    def haptic_server_script_path(self) -> Path | None:
+        for path in packaged_file_candidates("start_haptic_server.ps1"):
+            if path.exists():
+                return path
+        return None
+
+    def haptic_server_logs_dir(self) -> Path:
+        for root in package_root_candidates():
+            if (root / "runtime").exists():
+                return root / "logs"
+        return LOG_DIR
+
+    def haptic_server_launch_command(self, device: str) -> tuple[list[str], Path] | None:
+        master_gain = self.dsx_audio_volume_percent_value()
+        args = [
+            "--event-port",
+            str(DEFAULT_HAPTIC_EVENT_PORT),
+            "--no-keys",
+            "--no-startup-pulse",
+            "--output-device",
+            device,
+            "--master-gain-percent",
+            str(master_gain),
+        ]
+        if self.dsx_udp_enabled.get():
+            args.append("--no-trigger-hid")
+
+        server_exe = self.haptic_server_executable_path()
+        if server_exe is not None:
+            return [str(server_exe), *args], server_exe.parent
+
+        debug_dll = self.haptic_server_debug_dll_path()
+        if debug_dll is not None:
+            return ["dotnet", str(debug_dll), *args], debug_dll.parent
+
+        return None
+
+    def stop_existing_haptic_server_blocking(self) -> None:
+        try:
+            subprocess.run(
+                [
+                    self.haptic_server_powershell(),
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    self.haptic_server_stop_command(),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                check=False,
+            )
+        except Exception:
+            pass
+
+    def start_haptic_server_process_blocking(self, device: str) -> tuple[bool, str]:
+        launch = self.haptic_server_launch_command(device)
+        if launch is None:
+            return False, "haptic server executable not found"
+        command, cwd = launch
+        logs_dir = self.haptic_server_logs_dir()
+        try:
+            logs_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        out_log = logs_dir / "haptic_server_latest.out.log"
+        err_log = logs_dir / "haptic_server_latest.err.log"
+        try:
+            stdout = out_log.open("w", encoding="utf-8", errors="replace")
+            stderr = err_log.open("w", encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return False, f"log open failed: {exc}"
+        try:
+            process = subprocess.Popen(
+                command,
+                cwd=str(cwd),
+                stdin=subprocess.DEVNULL,
+                stdout=stdout,
+                stderr=stderr,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except OSError as exc:
+            stdout.close()
+            stderr.close()
+            return False, str(exc)
+        self.haptic_server_process = process
+        time.sleep(1.5)
+        if process.poll() is not None:
+            stdout.close()
+            stderr.close()
+            return False, f"server exited with code {process.returncode}"
+        return True, ""
+
+    def haptic_server_stop_command(self) -> str:
+        return "\n".join(
+            [
+                "$ErrorActionPreference = 'SilentlyContinue'",
+                "$serverDllName = 'DualSenseOutputServer.dll'",
+                "$serverExeName = 'DualSenseOutputServer.exe'",
+                "$running = Get-CimInstance Win32_Process | Where-Object {",
+                "    ($_.Name -eq 'dotnet.exe' -and $_.CommandLine -like \"*$serverDllName*\") -or $_.Name -eq $serverExeName",
+                "}",
+                "foreach ($proc in $running) { Stop-Process -Id $proc.ProcessId -Force }",
+            ]
+        )
+
+    def start_haptic_server_for_device(
+        self,
+        device: str,
+        action: str,
+        send_test: bool = False,
+        validate_saved_device: bool = False,
+        status_message: str = "Starting haptic server...",
+    ) -> None:
+        if self.haptic_server_action_running:
+            return
+        device = str(device).strip()
+        if not device:
+            self.haptic_server_status_text = "select device"
+            return
+        self.haptic_server_action_running = True
+        self.haptic_server_action_result = None
+        self.haptic_server_status_text = "starting"
+        self.value_text.set(status_message)
+
+        def worker() -> None:
+            try:
+                if validate_saved_device:
+                    devices = self.sorted_haptic_audio_devices(self.enumerate_audio_output_devices(force=True))
+                    if device not in devices:
+                        self.haptic_server_action_result = (action, False, "saved device not present", send_test)
+                        return
+                    verified_device = str(self.settings.get("haptic_audio_device_verified", "")).strip()
+                    if verified_device != device and not self.is_likely_dualsense_audio_device(device):
+                        self.haptic_server_action_result = (action, False, "saved device needs confirmation", send_test)
+                        return
+                self.stop_existing_haptic_server_blocking()
+                success, start_message = self.start_haptic_server_process_blocking(device)
+                if success:
+                    self.haptic_server_action_result = (action, True, "", send_test)
+                else:
+                    self.haptic_server_action_result = (action, False, start_message, send_test)
+            except OSError as exc:
+                self.haptic_server_action_result = (action, False, str(exc), send_test)
+            except Exception as exc:
+                self.haptic_server_action_result = (action, False, f"{type(exc).__name__}: {exc}", send_test)
+
+        threading.Thread(target=worker, daemon=True).start()
+        try:
+            self.root.after(350, self.poll_haptic_server_action)
+        except tk.TclError:
+            pass
+
+    def poll_haptic_server_action(self) -> None:
+        result = self.haptic_server_action_result
+        if result is None:
+            message = "Connecting DualSense device. This can take a few seconds; please wait."
+            self.value_text.set(message)
+            try:
+                self.haptic_device_status_text.set(message)
+            except tk.TclError:
+                pass
+            try:
+                self.root.after(350, self.poll_haptic_server_action)
+            except tk.TclError:
+                pass
+            return
+        self.haptic_server_action_running = False
+        self.haptic_server_action_result = None
+        action, success, message, send_test = result
+        if success:
+            self.haptic_server_status_text = "ready"
+            if send_test:
+                device = self.haptic_audio_device_text.get().strip()
+                if device:
+                    self.settings["haptic_audio_device_verified"] = device
+                    save_settings(self.settings, make_backup=True, force=True)
+                self.send_selected_device_haptic_test()
+                message = "Haptic test sent: 80Hz haptic, L2 pulse, then R2 pulse."
+                self.value_text.set(message)
+                try:
+                    self.haptic_device_status_text.set(message)
+                except tk.TclError:
+                    pass
+            else:
+                self.value_text.set("Haptic server ready.")
+            return
+        self.haptic_server_status_text = "select device" if action == "auto" else "failed"
+        if action == "test":
+            self.last_error = f"haptic server selected-device test failed: {message}"
+            self.value_text.set("Selected device failed haptic test. Choose a DualSense audio device.")
+            try:
+                self.haptic_device_status_text.set("Selected device failed. Choose a DualSense audio device.")
+            except tk.TclError:
+                pass
+        else:
+            self.value_text.set("Select DualSense audio device before haptic output.")
+
+    def stop_haptic_server_async(self) -> None:
+        try:
+            subprocess.Popen(
+                [
+                    self.haptic_server_powershell(),
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    self.haptic_server_stop_command(),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except OSError:
+            pass
+
+    def send_selected_device_haptic_test(self) -> None:
+        self.send_soft_haptic_test()
+        self.send_soft_trigger_test()
+
+    def send_soft_haptic_test(self) -> None:
+        self.send_haptic_event(
+            "HAPTIC_TEST|hz=80|amp=40|durationMs=1500",
+            count=False,
+        )
+
+    def send_soft_trigger_test(self) -> None:
+        left_payload = (
+            "TRIGGER_MODE_TEST|side=L|preset=rigid_wall_50|count=1|onMs=240|offMs=0|hz=80|amp=153"
+            "|wallStart=0|wallEnd=0|wallStrength=0"
+        )
+        right_payload = (
+            "TRIGGER_MODE_TEST|side=R|preset=rigid_wall_50|count=1|onMs=240|offMs=0|hz=80|amp=153"
+            "|wallStart=0|wallEnd=0|wallStrength=0"
+        )
+        self.send_haptic_event(left_payload, count=False)
+        try:
+            self.root.after(420, lambda: self.send_haptic_event(right_payload, count=False))
+        except tk.TclError:
+            self.send_haptic_event(right_payload, count=False)
+
+    def send_soft_gear_shift_haptic_test(self) -> None:
+        try:
+            self.root.after(120, lambda: self.send_gear_shift_haptic_test(core_volume=3, high_hz_volume=2, particles_volume=2, second_pulse=False))
+        except tk.TclError:
+            self.send_gear_shift_haptic_test(core_volume=3, high_hz_volume=2, particles_volume=2, second_pulse=False)
+
+    def send_gear_shift_haptic_test(
+        self,
+        core_volume: int = 10,
+        high_hz_volume: int = 10,
+        particles_volume: int = 10,
+        second_pulse: bool = True,
+    ) -> None:
+        def send_once(direction: int) -> None:
+            fields = {
+                "dir": direction,
+                "rpmRatio": 0.82,
+                "throttle": 0.70,
+                "torque": 0.55,
+                "pi": 800,
+                "carClass": 5,
+                "carGroup": 0,
+                "maxRpm": 8000,
+                "coreVolume": core_volume,
+                "highHzVolume": high_hz_volume,
+                "particlesVolume": particles_volume,
+                "coreLeft": 1.0,
+                "coreRight": 1.0,
+                "highHzLeft": 1.0,
+                "highHzRight": 1.0,
+                "particlesLeft": 1.0,
+                "particlesRight": 1.0,
+            }
+            payload = "GEAR_SHIFT|" + "|".join(f"{key}={value}" for key, value in fields.items())
+            self.send_haptic_event(payload)
+
+        send_once(1)
+        if not second_pulse:
+            return
+        try:
+            self.root.after(260, lambda: send_once(-1))
+        except tk.TclError:
+            send_once(-1)
+
+    def close_haptic_device_popup(self) -> None:
+        popup = self.haptic_device_popup
+        self.haptic_device_popup = None
+        self.haptic_device_listbox = None
+        self.haptic_device_loading = False
+        if popup is not None:
+            try:
+                if popup.winfo_exists():
+                    popup.destroy()
+            except tk.TclError:
+                pass
+
     def send_haptic_master_gain(self, percent: int | None = None) -> None:
         if percent is None:
             percent = self.dsx_audio_volume_percent_value()
@@ -6532,6 +7712,12 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
         return devices
 
     def enumerate_audio_output_devices_from_output_server(self) -> list[str]:
+        runtime_server = self.haptic_server_executable_path()
+        if runtime_server is not None:
+            devices = self.try_enumerate_audio_output_devices([str(runtime_server), "--list-output-devices"], runtime_server.parent)
+            if devices:
+                return devices
+
         app_dir = Path(__file__).resolve().parent
         server_dir = app_dir / "dualsense_output_server"
         server_project = server_dir / "DualSenseOutputServer.csproj"
@@ -6709,7 +7895,7 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
         current_percent = self.normalized_hud_scale_percent(self.hud_scale_percent.get())
         for key, default_geometry, hud, min_width, min_height in self.hud_geometry_specs():
             for percent in HUD_SCALE_PRESETS:
-                geometry = self.scaled_hud_geometry(
+                geometry = self.scaled_hud_reset_geometry(
                     default_geometry,
                     percent / 100.0,
                     min_width,
@@ -6811,6 +7997,7 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
         self.dsx_port_text.set(str(self.normalized_udp_port(self.settings.get("dsx_port", DEFAULT_DSX_PORT), DEFAULT_DSX_PORT)))
         self.dsx_audio_export_enabled.set(bool(self.settings.get("dsx_audio_export_enabled", self.dsx_audio_export_enabled.get())))
         self.dsx_audio_device_text.set(str(self.settings.get("dsx_audio_device", self.dsx_audio_device_text.get())))
+        self.haptic_audio_device_text.set(str(self.settings.get("haptic_audio_device", self.haptic_audio_device_text.get())))
         dsx_audio_volume_percent = self.clamp_int(self.settings.get("dsx_audio_volume_percent", self.dsx_audio_volume_percent_value()), 0, 100)
         self.dsx_audio_volume_step.set(self.clamp_int(round(dsx_audio_volume_percent / 10), 0, 10))
         self.dsx_audio_volume_text.set(f"{self.dsx_audio_volume_step.get() * 10}%")
@@ -7351,6 +8538,25 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
             font=ui_font("Segoe UI", 12, "bold"),
             anchor="w",
         ).pack(side="left", fill="x", expand=True)
+        self.select_dualsense_button = tk.Button(
+            header,
+            text="Select DualSense",
+            command=self.show_haptic_device_popup,
+            bg="#1f6feb",
+            fg="#eef3ff",
+            activebackground="#2f81f7",
+            activeforeground="#ffffff",
+            relief="raised",
+            bd=1,
+            highlightthickness=1,
+            highlightbackground="#7db2ff",
+            highlightcolor="#eef3ff",
+            overrelief="raised",
+            font=ui_font("Segoe UI", 7, "bold"),
+            padx=ui_px(6),
+            pady=ui_px(2),
+        )
+        self.select_dualsense_button.pack(side="right", padx=(ui_px(8), 0))
 
         scroll_shell = tk.Frame(self.effects_frame, bg="#171b20")
         scroll_shell.grid(row=1, column=0, sticky="nsew")
@@ -9454,6 +10660,7 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
         self.update_effect_label_styles()
         self.update_trigger_label_styles()
         self.refresh_effect_detail_panel()
+        self.update_preset_lock_state()
 
     def on_output_effect_selected(self) -> None:
         self.settings["selected_output_effect"] = self.selected_output_effect.get()
@@ -9461,7 +10668,7 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
 
     def update_effect_label_styles(self) -> None:
         selected = self.selected_output_effect.get()
-        locked = self.config_preset_effects_locked()
+        locked = self.haptic_effects_locked()
         for effect_name, label in self.effect_name_labels.items():
             active = self.selected_detail_type.get() == "haptic" and effect_name == selected
             if locked:
@@ -9480,6 +10687,7 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
         self.update_effect_label_styles()
         self.update_trigger_label_styles()
         self.refresh_effect_detail_panel()
+        self.update_preset_lock_state()
 
     def update_trigger_label_styles(self) -> None:
         selected = self.selected_trigger_effect.get()
@@ -9492,20 +10700,26 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
                 label.configure(fg="#f1c40f" if active else "#d6dde5")
 
     def update_preset_lock_state(self) -> None:
-        locked = self.config_preset_effects_locked()
-        effect_state = tk.DISABLED if locked else tk.NORMAL
+        preset_locked = self.config_preset_effects_locked()
+        haptic_locked = self.haptic_effects_locked()
+        effect_state = tk.DISABLED if haptic_locked else tk.NORMAL
         for effect_name, widgets in self.effect_lock_widgets.items():
             for widget in widgets:
                 self.configure_widget_state(widget, effect_state)
-        trigger_state = tk.DISABLED if locked else tk.NORMAL
+        trigger_state = tk.DISABLED if preset_locked else tk.NORMAL
         for trigger_name, widgets in self.trigger_lock_widgets.items():
             for widget in widgets:
                 self.configure_widget_state(widget, trigger_state)
         for widget in getattr(self, "drift_relief_lock_widgets", []):
             self.configure_widget_state(widget, trigger_state)
-        self.set_preset_lock_overlay_visible(getattr(self, "effects_lock_overlay", None), locked)
-        self.set_preset_lock_overlay_visible(getattr(self, "trigger_lock_overlay", None), locked)
-        self.set_preset_lock_overlay_visible(getattr(self, "detail_lock_overlay", None), locked)
+        self.set_preset_lock_overlay_message(getattr(self, "effects_lock_overlay", None), self.haptic_lock_message())
+        self.set_preset_lock_overlay_message(getattr(self, "trigger_lock_overlay", None), self.locked_preset_message())
+        detail_locked = preset_locked or (self.selected_detail_type.get() == "haptic" and haptic_locked)
+        detail_message = self.haptic_lock_message() if self.selected_detail_type.get() == "haptic" else self.locked_preset_message()
+        self.set_preset_lock_overlay_message(getattr(self, "detail_lock_overlay", None), detail_message)
+        self.set_preset_lock_overlay_visible(getattr(self, "effects_lock_overlay", None), haptic_locked)
+        self.set_preset_lock_overlay_visible(getattr(self, "trigger_lock_overlay", None), preset_locked)
+        self.set_preset_lock_overlay_visible(getattr(self, "detail_lock_overlay", None), detail_locked)
         self.update_effect_label_styles()
         self.update_trigger_label_styles()
         self.apply_detail_lock_state()
@@ -9513,7 +10727,10 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
     def apply_detail_lock_state(self) -> None:
         if not hasattr(self, "effect_detail_body"):
             return
-        state = tk.DISABLED if self.config_preset_effects_locked() else tk.NORMAL
+        locked = self.config_preset_effects_locked()
+        if self.selected_detail_type.get() == "haptic":
+            locked = locked or self.haptic_effects_locked()
+        state = tk.DISABLED if locked else tk.NORMAL
         for child in self.effect_detail_body.winfo_children():
             self.configure_widget_tree_state(child, state)
 
@@ -9767,7 +10984,7 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
             controls_state["max_text"].set(str(end))
 
     def save_effect_settings(self, mark_dirty: bool = True) -> None:
-        if mark_dirty and self.config_preset_effects_locked():
+        if mark_dirty and self.haptic_effects_locked():
             return
         self.settings.setdefault("effects", {})
         for effect_name, controls_state in self.effect_controls.items():
@@ -12840,6 +14057,8 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
                 return
             self.last_error = f"DSX bridge ignored event: {event_name.split('|', 1)[0]}"
             return
+        if not self.haptic_audio_device_configured() and not event_name.startswith("TRIGGER_") and not event_name.startswith("MASTER_GAIN"):
+            return
         try:
             self.haptic_sock.sendto(event_name.encode("ascii"), self.haptic_addr)
             if count:
@@ -13150,6 +14369,7 @@ Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEac
 
         self.status.set(
             f"Packets: {self.packet_count}   Haptic events: {self.haptic_event_count}   Window: {GRAPH_SECONDS:g}s"
+            + f"   Haptic server: {self.haptic_server_status_text}"
             + (f"   Log rows: {self.log_row_count}" if self.log_writer is not None else "")
             + (f"   Last error: {self.last_error}" if self.last_error else "")
         )
@@ -13317,7 +14537,21 @@ def main() -> int:
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--haptic-event-port", type=int, default=DEFAULT_HAPTIC_EVENT_PORT)
-    args = parser.parse_args()
+    parser.add_argument(
+        "--export-release-settings",
+        nargs="?",
+        const=str(RELEASE_SETTINGS_PATH),
+        default=None,
+        help="Write a release-safe settings JSON with local window/HUD layout keys removed, then exit.",
+    )
+    args, unknown_args = parser.parse_known_args()
+    if unknown_args and not running_frozen():
+        parser.error(f"unrecognized arguments: {' '.join(unknown_args)}")
+
+    if args.export_release_settings is not None:
+        path = export_release_settings(Path(args.export_release_settings))
+        print(f"Exported release settings: {path}")
+        return 0
 
     app = TelemetryApp(args.host, args.port, args.haptic_event_port)
     app.run()
@@ -13326,6 +14560,16 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+
+
+
+
+
+
+
+
 
 
 

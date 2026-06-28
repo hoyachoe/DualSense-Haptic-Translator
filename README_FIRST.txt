@@ -3,7 +3,7 @@
 
 Pre-release notice
 ------------------
-This is a v0.9 pre-release shared early for users who requested access.
+This is a v0.9.1 pre-release shared early for users who requested access.
 Some features are still being improved, tuning is ongoing, and behavior may change before v1.0.
 
 Quick start
@@ -50,3 +50,4 @@ Troubleshooting
 - If no telemetry arrives, check Forza Data Out IP and port 8800.
 - If haptics do not play, check the Windows audio output device name for DualSense / Wireless Controller.
 - Close and reopen the app after changing controller/audio routing.
+

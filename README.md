@@ -6,7 +6,7 @@ This project is focused specifically on the Forza Horizon series. It listens to 
 
 Forza Horizon does not officially provide native DualSense haptic feedback, so this is an experimental compatibility project for players who want to explore DualSense-style feedback in Forza. It is not intended to compare against, replace, or claim superiority over other gamepads or force-feedback systems. Many players have strong preferences and long familiarity with their own controllers; this project is simply an experiment for people who enjoy the DualSense and want to explore what might be possible in games that do not directly support it.
 
-This is a `v0.9` pre-release shared early for requested testing. It is not complete software, and correct operation is not guaranteed on every PC, controller firmware, Windows audio configuration, Forza version, or store version. Haptic tuning, trigger behavior, HUD behavior, presets, device routing, and compatibility may still change before `v1.0`.
+This is a `v0.9.1` pre-release shared early for requested testing. It is not complete software, and correct operation is not guaranteed on every PC, controller firmware, Windows audio configuration, Forza version, or store version. Haptic tuning, trigger behavior, HUD behavior, presets, device routing, and compatibility may still change before `v1.0`.
 
 ## Quick Start For Release ZIP
 

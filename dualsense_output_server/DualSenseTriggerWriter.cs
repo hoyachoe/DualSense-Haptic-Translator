@@ -27,6 +27,7 @@ internal sealed class DualSenseTriggerWriter : IDisposable
     private FileStream? stream;
     private TriggerLayout layout = UsbLayout;
     private TriggerFrame triggerModeTestRestFrame = TriggerFrame.Off;
+    private int triggerModeTestSide;
 
     public bool Connected => stream is not null;
     public string DevicePath { get; private set; } = "";
@@ -143,7 +144,7 @@ internal sealed class DualSenseTriggerWriter : IDisposable
         Set(TriggerFrame.Off, TriggerFrame.Off);
     }
 
-    public void TestRightPreset(string preset, int count, int onMs, int offMs, int frequency, int amplitude, int wallStart = 0, int wallEnd = 0, int wallStrength = 0)
+    public void TestRightPreset(string preset, int count, int onMs, int offMs, int frequency, int amplitude, int wallStart = 0, int wallEnd = 0, int wallStrength = 0, int side = 0)
     {
         if (!Connected)
         {
@@ -169,6 +170,7 @@ internal sealed class DualSenseTriggerWriter : IDisposable
         triggerModeTestRestFrame = wallStrength > 0
             ? TriggerFrame.TriggerRange(wallStart, wallEnd, wallStrength)
             : TriggerFrame.Off;
+        triggerModeTestSide = Math.Max(-1, Math.Min(1, side));
 
         switch (preset.Trim().ToLowerInvariant())
         {
@@ -327,10 +329,26 @@ internal sealed class DualSenseTriggerWriter : IDisposable
     {
         for (var i = 0; i < count; i++)
         {
-            Set(frame, frame);
+            SetForTriggerModeTestSide(frame);
             Thread.Sleep(Math.Max(1, onMs));
             Set(triggerModeTestRestFrame, triggerModeTestRestFrame);
             Thread.Sleep(Math.Max(1, offMs));
+        }
+    }
+
+    private void SetForTriggerModeTestSide(TriggerFrame frame)
+    {
+        if (triggerModeTestSide < 0)
+        {
+            Set(frame, triggerModeTestRestFrame);
+        }
+        else if (triggerModeTestSide > 0)
+        {
+            Set(triggerModeTestRestFrame, frame);
+        }
+        else
+        {
+            Set(frame, frame);
         }
     }
 

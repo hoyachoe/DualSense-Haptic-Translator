@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
-    <ApplicationIcon>..\DualSense Haptic Translator.ico</ApplicationIcon>
+    <ApplicationIcon>..\assets\DualSense Haptic Translator.ico</ApplicationIcon>
     <AssemblyName>DualSense Haptic Translator</AssemblyName>
     <RootNamespace>DualSenseHapticTranslatorLauncher</RootNamespace>
   </PropertyGroup>

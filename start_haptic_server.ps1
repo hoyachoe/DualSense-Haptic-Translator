@@ -17,7 +17,15 @@ $disableTriggerHid = $false
 if (Test-Path -LiteralPath $settingsPath) {
     try {
         $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
-        if ($settings.dsx_audio_export_enabled -and -not [string]::IsNullOrWhiteSpace([string]$settings.dsx_audio_device)) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$settings.haptic_audio_device)) {
+            $outputDeviceNeedle = [string]$settings.haptic_audio_device
+            if ($null -ne $settings.dsx_audio_volume_percent) {
+                $parsedGain = 100
+                if ([int]::TryParse([string]$settings.dsx_audio_volume_percent, [ref]$parsedGain)) {
+                    $masterGainPercent = [Math]::Max(0, [Math]::Min(100, $parsedGain))
+                }
+            }
+        } elseif ($settings.dsx_audio_export_enabled -and -not [string]::IsNullOrWhiteSpace([string]$settings.dsx_audio_device)) {
             $outputDeviceNeedle = [string]$settings.dsx_audio_device
             if ($null -ne $settings.dsx_audio_volume_percent) {
                 $parsedGain = 100
