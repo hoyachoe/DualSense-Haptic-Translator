@@ -58,6 +58,12 @@ PORT: 8800, or the telemetry port shown in the app
 
 If `127.0.0.1` still does not work, try setting the Forza Data Out IP address to this PC's IPv4 address from `ipconfig`.
 
+### Optional DS4Windows Compatibility Workaround
+
+For Xbox App / Windows Store users, DS4Windows can also be used as a practical compatibility workaround. In this setup, DS4Windows lets the DualSense appear to the game as an Xbox 360 controller for normal game input, while this app still handles DualSense haptic audio and adaptive trigger resistance.
+
+This is optional and is mainly intended for users whose Store/Xbox App version of Forza behaves better with Xbox-style controller input. DS4Windows is a separate third-party tool and is not included with this project.
+
 The telemetry listener should bind to all interfaces, not loopback only. In C#, that would look like:
 
 ```csharp
@@ -109,3 +115,4 @@ Note: `maxGears` is intentionally not used for gear-shift haptic classification 
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE).
+

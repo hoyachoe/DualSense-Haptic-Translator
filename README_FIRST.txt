@@ -31,6 +31,7 @@ Steam / Xbox App / Windows Store
   CheckNetIsolation LoopbackExempt -a -n=Microsoft.SunriseBaseGame_8wekyb3d8bbwe
 
 - If 127.0.0.1 still does not work, try this PC's IPv4 address from ipconfig in the Forza Data Out IP field.
+- Optional: Xbox App / Windows Store users can use DS4Windows so the DualSense appears to the game as an Xbox 360 controller, while this app handles DualSense haptics and adaptive trigger resistance.
 
 Notes
 -----
@@ -50,4 +51,5 @@ Troubleshooting
 - If no telemetry arrives, check Forza Data Out IP and port 8800.
 - If haptics do not play, check the Windows audio output device name for DualSense / Wireless Controller.
 - Close and reopen the app after changing controller/audio routing.
+
 
