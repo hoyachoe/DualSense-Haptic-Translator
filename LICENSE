@@ -1,21 +1,96 @@
-MIT License
+DualSense Haptic Translator Source-Available Non-Commercial License
 
-Copyright (c) 2026 hoyachoe
+Copyright (c) 2026 Hoyachoe
+
+This software and its source code are made available for personal, educational,
+research, and non-commercial use.
+
+This is not an OSI-approved open source license and not a free software license.
+The source code is provided so that users can study, modify, and adapt the
+software for their own non-commercial use.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+of this software and associated documentation files, to use, copy, modify,
+and redistribute the software for personal and non-commercial purposes,
+subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. Attribution
+
+The original copyright notice, this license file, and a clear attribution to
+the original project must be preserved in all copies or substantial portions
+of the software.
+
+Attribution must include:
+
+- Original project name: DualSense Haptic Translator
+- Original author: Hoyachoe
+- Original repository link, if distributed publicly
+
+2. Modified Versions
+
+If you modify this software and redistribute it, you must clearly state that
+your version has been modified and is not the original version.
+
+You may not present a modified version as the official version of this project.
+
+3. Non-Commercial Use Only
+
+Commercial use is not permitted without prior written permission from the
+copyright holder.
+
+Commercial use includes, but is not limited to:
+
+- Selling this software or a modified version
+- Including this software in a paid product
+- Using this software as part of a paid service
+- Repackaging this software for commercial distribution
+- Monetizing a modified version as your own product
+
+For commercial licensing, please contact the copyright holder.
+
+4. No Official Affiliation
+
+This project is not affiliated with, endorsed by, sponsored by, or supported by
+Microsoft, Xbox, Turn 10 Studios, Playground Games, Forza, Sony, PlayStation,
+or DualSense.
+
+You may not use this software, its name, or modified versions of it in a way
+that suggests official endorsement, partnership, or support by any of those
+companies or brands.
+
+5. No Misrepresentation
+
+You may not remove attribution, rename the project, or redistribute it in a way
+that falsely implies that you are the original creator.
+
+You may not use the author's name, handle, project name, or repository link to
+promote your own modified version without clearly stating that your version is
+modified and unofficial.
+
+6. No Warranty
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+The author does not guarantee that the software will work on all systems,
+with all versions of Forza, with all controllers, or with all Windows
+configurations.
+
+7. Limitation of Liability
+
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGE, DEVICE ISSUE,
+DATA LOSS, SYSTEM CONFIGURATION PROBLEM, GAME ISSUE, CONTROLLER ISSUE, OR
+OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
+
+Use this software at your own risk.
+
+8. Support
+
+No support is guaranteed.
+
+The author may ignore or refuse support requests that are abusive, threatening,
+insulting, incomplete, or unrelated to the project.
+
+By using, modifying, or redistributing this software, you agree to the terms
+of this license.

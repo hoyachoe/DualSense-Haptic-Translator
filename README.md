@@ -1,18 +1,48 @@
-﻿# Forza Horizon DualSense Haptic Translator
+# Forza Horizon DualSense Haptic Translator
 
 A highly experimental Forza Horizon telemetry translator for DualSense haptic audio and adaptive trigger feedback on Windows.
 
-This project is focused specifically on the Forza Horizon series. It listens to Forza Horizon UDP Data Out telemetry and translates selected driving events into DualSense haptic audio and adaptive trigger feedback.
+## Notice
 
-Forza Horizon does not officially provide native DualSense haptic feedback, so this is an experimental compatibility project for players who want to explore DualSense-style feedback in Forza. It is not intended to compare against, replace, or claim superiority over other gamepads or force-feedback systems. Many players have strong preferences and long familiarity with their own controllers; this project is simply an experiment for people who enjoy the DualSense and want to explore what might be possible in games that do not directly support it.
+**DualSense Haptic Translator** is an unofficial personal experimental project.
 
-This is a `v0.9.1` pre-release shared early for requested testing. It is not complete software, and correct operation is not guaranteed on every PC, controller firmware, Windows audio configuration, Forza version, or store version. Haptic tuning, trigger behavior, HUD behavior, presets, device routing, and compatibility may still change before `v1.0`.
+This project is not affiliated with, endorsed by, sponsored by, or supported by Microsoft, Xbox, Turn 10 Studios, Playground Games, Forza, Sony, PlayStation, or DualSense.
+
+This app is **not** an Xbox controller emulator. It does not replace Steam Input, DSX, DS4Windows, reWASD, or any other input tool.
+
+This app reads Forza Horizon UDP telemetry and translates selected vehicle state, grip, braking, slip, road feedback, impacts, and trigger feedback into DualSense haptic audio and adaptive trigger output.
+
+This project exists for players who enjoy experimenting with DualSense feedback in Forza Horizon, which does not officially provide native DualSense haptics. It is not intended to compare against, replace, or claim superiority over other gamepads, controller tools, or force-feedback systems.
+
+This software is provided **as-is**. Compatibility, stability, and support are not guaranteed. Use it at your own risk.
+
+## Recommended Setup
+
+- Steam version of Forza Horizon
+- Wired DualSense controller
+- Forza Data Out enabled
+- `Select DualSense` completed inside this app after first launch
+
+## Additional Setup May Be Required
+
+The following environments may require additional configuration and may not work reliably on every PC:
+
+- Xbox App / Microsoft Store / Game Pass versions
+- Bluetooth DualSense haptic output
+- DSX / DS4Windows / Steam Input / reWASD conflicts
+- Windows loopback, firewall, or custom network configurations
+
+## Current Status
+
+This is a `v0.9.1` pre-release shared early for requested testing. It is not complete software, and correct operation is not guaranteed on every PC, controller firmware, Windows audio configuration, Forza version, or store version.
+
+Haptic tuning, trigger behavior, HUD behavior, presets, device routing, and compatibility may still change before `v1.0`.
 
 ## Quick Start For Release ZIP
 
 For normal release users, you do not need to start the server manually. The release launcher starts the required DualSense output server automatically.
 
-1. Connect your DualSense controller to Windows.
+1. Connect your DualSense controller to Windows, preferably by USB.
 2. Download the release ZIP and extract it.
 3. Start `DualSense Haptic Translator.exe` from the extracted release folder.
 4. In the app, press `Select DualSense` and choose the actual DualSense audio output device you are using. This step is required for haptic audio output.
@@ -102,17 +132,14 @@ python telemetry_grapher.py --host 0.0.0.0 --port 8800 --haptic-event-port 18801
 
 The DualSense output server listens for local haptic events on `127.0.0.1:18801` and sends translated haptic output to DualSense channels 3 and 4.
 
-## Status
+## Support And Issues
 
-This project is not final release software yet. Some features are still being improved, tuning is ongoing, and behavior may change between builds.
+Support is not guaranteed. Constructive bug reports and technical feedback are welcome, but issues without enough environment information may not be answerable.
 
-Normal operation is not guaranteed. The app may fail to receive telemetry, may not detect the intended DualSense audio device, or may behave differently depending on Windows audio routing, controller connection mode, Forza edition, and system configuration.
-
-Please treat the current release as an experimental preview rather than a polished end-user product.
-
-Note: `maxGears` is intentionally not used for gear-shift haptic classification because tuned transmissions can make it stale or misleading.
+Please see [SUPPORT.md](SUPPORT.md) before opening an issue.
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE).
+This project is distributed under a source-available non-commercial license. It is **not** an OSI-approved open source license. See [LICENSE](LICENSE).
 
+Note: `maxGears` is intentionally not used for gear-shift haptic classification because tuned transmissions can make it stale or misleading.
