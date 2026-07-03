@@ -38,6 +38,12 @@ This is a `v0.9.2` pre-release shared early for requested testing. It is not com
 
 Haptic tuning, trigger behavior, HUD behavior, presets, device routing, and compatibility may still change before `v1.0`.
 
+## App Preview
+
+The app provides a tuning-oriented interface for telemetry graphs, haptic effect levels, adaptive trigger effects, HUD controls, presets, and DualSense device selection.
+
+![DualSense Haptic Translator app preview](assets/app-preview-v0.9.2.png)
+
 ## Installation Video
 
 Watch the setup video before installing if this is your first time using the app:
