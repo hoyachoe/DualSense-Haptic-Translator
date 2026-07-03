@@ -34,9 +34,17 @@ The following environments may require additional configuration and may not work
 
 ## Current Status
 
-This is a `v0.9.1` pre-release shared early for requested testing. It is not complete software, and correct operation is not guaranteed on every PC, controller firmware, Windows audio configuration, Forza version, or store version.
+This is a `v0.9.2` pre-release shared early for requested testing. It is not complete software, and correct operation is not guaranteed on every PC, controller firmware, Windows audio configuration, Forza version, or store version.
 
 Haptic tuning, trigger behavior, HUD behavior, presets, device routing, and compatibility may still change before `v1.0`.
+
+## Installation Video
+
+Watch the setup video before installing if this is your first time using the app:
+
+[![DualSense Haptic Translator installation video](https://img.youtube.com/vi/RCV-Fzagu7k/hqdefault.jpg)](https://youtu.be/RCV-Fzagu7k)
+
+[Open the installation video on YouTube](https://youtu.be/RCV-Fzagu7k)
 
 ## Quick Start For Release ZIP
 
