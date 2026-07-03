@@ -4,95 +4,49 @@
   "effects": {
     "Gear Shift Bite - Core": {
       "enabled": true,
-      "volume": 9,
-      "balance": 7,
-      "punch": 5,
-      "length": 5,
-      "tail": 5,
-      "tone": 5
+      "volume": 8
     },
     "Gear Shift Bite - High Hz": {
       "enabled": true,
-      "volume": 6,
-      "balance": 7,
-      "punch": 5,
-      "length": 5,
-      "tail": 5,
-      "tone": 5
+      "volume": 6
     },
     "Gear Shift Bite - Particles": {
       "enabled": true,
-      "volume": 6,
-      "balance": 7,
-      "punch": 5,
-      "length": 5,
-      "tail": 5,
-      "tone": 5
+      "volume": 6
     },
     "Rev limit": {
       "enabled": true,
-      "volume": 5,
-      "pan": 10,
-      "rpm_position": 96,
-      "fade_range": 10,
-      "tone": 5,
-      "pulse_rate": 5,
-      "punch": 5,
-      "vehicle_rpm_scaling": 1,
-      "max_gear_limit": 7,
-      "downshift_surge": 5,
-      "climb_strength": 5
+      "volume": 3,
+      "pan": 10
     },
     "Impacts": {
       "enabled": true,
-      "volume": 10
+      "volume": 9
     },
     "Impact - Side": {
       "enabled": true,
-      "volume": 10
+      "volume": 9
     },
     "Impact - Smashable": {
       "enabled": true,
-      "volume": 10
+      "volume": 9
     },
     "Rumble Kerbs": {
       "enabled": true,
-      "volume": 7,
-      "speed_low_start": 5,
-      "speed_high_max": 330,
-      "low_speed_hz": 18,
-      "high_speed_hz": 82,
-      "bump_sharpness": 5
+      "volume": 6
     },
     "Tire Limit Load": {
       "enabled": true,
-      "volume": 9,
-      "entry_threshold": 40,
-      "full_load_point": 40,
-      "low_load_hz": 40,
-      "high_load_hz": 15,
-      "attack": 5
+      "volume": 8
     },
     "Wheelspin Buzz": {
       "enabled": true,
-      "volume": 4,
-      "pan": 10,
-      "drift_relief_output": 2,
-      "slip_start_offset": 0,
-      "buzz_hz": 70,
-      "noise_range": 0,
-      "attack": 5
+      "volume": 3,
+      "pan": 5
     },
     "Road Bumps": {
       "enabled": true,
-      "volume": 8,
-      "bump_sensitivity": 5,
-      "small_bump_strength": 5,
-      "large_bump_strength": 5,
-      "low_bump_hz": 34,
-      "high_bump_hz": 60,
-      "attack": 5,
-      "decay": 5
+      "volume": 8
     },
     "Road Bumps - Offroad": {
       "enabled": false,
@@ -113,7 +67,7 @@
       "curve": 0,
       "start_percent": 55,
       "max_percent": 100,
-      "force_percent": 40,
+      "force_percent": 50,
       "upshift_strength_percent": 70,
       "upshift_duration_ms": 20,
       "downshift_strength_percent": 70,
@@ -159,7 +113,7 @@
       "kerb_l_high_amp": 2,
       "kerb_r_low_amp": 1,
       "kerb_r_high_amp": 2,
-      "strength": 102,
+      "strength": 127,
       "smooth_start_ms": 0,
       "pulse_strength": 40,
       "pulse_start_percent": 0,
@@ -176,7 +130,7 @@
       "curve": 0,
       "start_percent": 50,
       "max_percent": 100,
-      "force_percent": 20,
+      "force_percent": 30,
       "upshift_strength_percent": 10,
       "upshift_duration_ms": 180,
       "downshift_strength_percent": 10,
@@ -222,7 +176,7 @@
       "kerb_l_high_amp": 2,
       "kerb_r_low_amp": 1,
       "kerb_r_high_amp": 2,
-      "strength": 51,
+      "strength": 77,
       "smooth_start_ms": 300,
       "pulse_strength": 30,
       "pulse_start_percent": 0,
@@ -302,7 +256,7 @@
       "curve": 0,
       "start_percent": 0,
       "max_percent": 100,
-      "force_percent": 20,
+      "force_percent": 15,
       "upshift_strength_percent": 33,
       "upshift_duration_ms": 80,
       "downshift_strength_percent": 33,
@@ -348,7 +302,7 @@
       "kerb_l_high_amp": 2,
       "kerb_r_low_amp": 1,
       "kerb_r_high_amp": 2,
-      "strength": 51,
+      "strength": 39,
       "smooth_start_ms": 80,
       "pulse_strength": 44,
       "pulse_start_percent": 0,
@@ -550,7 +504,7 @@
       "curve": 0,
       "start_percent": 70,
       "max_percent": 30,
-      "force_percent": 30,
+      "force_percent": 20,
       "upshift_strength_percent": 20,
       "upshift_duration_ms": 20,
       "downshift_strength_percent": 20,
@@ -596,7 +550,7 @@
       "kerb_l_high_amp": 3,
       "kerb_r_low_amp": 2,
       "kerb_r_high_amp": 3,
-      "strength": 76,
+      "strength": 51,
       "smooth_start_ms": 0,
       "pulse_strength": 100,
       "pulse_start_percent": 55,
@@ -614,9 +568,9 @@
       "start_percent": 0,
       "max_percent": 100,
       "force_percent": 30,
-      "upshift_strength_percent": 20,
+      "upshift_strength_percent": 15,
       "upshift_duration_ms": 90,
-      "downshift_strength_percent": 20,
+      "downshift_strength_percent": 15,
       "downshift_duration_ms": 90,
       "sustain_percent": 0,
       "wall_percent": 53,
@@ -676,7 +630,7 @@
       "curve": 0,
       "start_percent": 0,
       "max_percent": 100,
-      "force_percent": 40,
+      "force_percent": 33,
       "upshift_strength_percent": 60,
       "upshift_duration_ms": 120,
       "downshift_strength_percent": 60,
@@ -722,7 +676,7 @@
       "kerb_l_high_amp": 2,
       "kerb_r_low_amp": 1,
       "kerb_r_high_amp": 2,
-      "strength": 102,
+      "strength": 83,
       "smooth_start_ms": 140,
       "pulse_strength": 0,
       "pulse_start_percent": 0,
@@ -904,9 +858,9 @@
       "kerb_r_low_hz": 10,
       "kerb_r_high_hz": 40,
       "kerb_l_low_amp": 1,
-      "kerb_l_high_amp": 8,
+      "kerb_l_high_amp": 7,
       "kerb_r_low_amp": 1,
-      "kerb_r_high_amp": 8,
+      "kerb_r_high_amp": 7,
       "strength": 0,
       "smooth_start_ms": 0,
       "pulse_strength": 0,
@@ -924,7 +878,7 @@
       "curve": 0,
       "start_percent": 100,
       "max_percent": 30,
-      "force_percent": 20,
+      "force_percent": 15,
       "upshift_strength_percent": 20,
       "upshift_duration_ms": 20,
       "downshift_strength_percent": 20,
@@ -953,7 +907,7 @@
       "slip_pulse_rate": 40,
       "slip_strong_pulse_amplitude": 129,
       "slip_strong_pulse_rate": 50,
-      "slip_soft_pulse_amplitude": 3,
+      "slip_soft_pulse_amplitude": 5,
       "slip_soft_pulse_frequency": 40,
       "slip_soft_pulse_start_zone": 0,
       "kerb_low_hz": 12,
@@ -970,7 +924,7 @@
       "kerb_l_high_amp": 2,
       "kerb_r_low_amp": 1,
       "kerb_r_high_amp": 2,
-      "strength": 51,
+      "strength": 39,
       "smooth_start_ms": 0,
       "pulse_strength": 70,
       "pulse_start_percent": 0,

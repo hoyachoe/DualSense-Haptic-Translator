@@ -1,4 +1,4 @@
-﻿# Python cache
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -24,6 +24,7 @@ logs/
 # Local runtime settings
 telemetry_grapher_settings.json
 telemetry_grapher_settings.backup.json
+telemetry_grapher_settings.json.*
 
 # Local work folders
 _Codex_Control/
@@ -37,3 +38,4 @@ PROJECT_NOTES.md
 Thumbs.db
 .vscode/
 .idea/
+INTERNAL_*.md

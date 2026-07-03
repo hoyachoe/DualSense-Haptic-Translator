@@ -9,6 +9,7 @@ using NAudio.Wave;
 const int DefaultEventPort = 18801;
 const int DefaultTriggerStatusPort = 18802;
 const float DefaultMasterGain = 0.95f;
+const int NativeTriggerVibrateFrequencyMax = 255;
 const string DefaultOutputDeviceNameNeedle = "DualSense";
 
 Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
@@ -86,6 +87,7 @@ Console.WriteLine("REV_LIMIT: continuous RPM limit layer, Ch3/4");
 Console.WriteLine("RUMBLE_KERBS: continuous front-left/right kerb layer, Ch3/4");
 Console.WriteLine("TIRE_LIMIT_LOAD: continuous tire grip-limit layer, Ch3/4");
 Console.WriteLine("WHEELSPIN_BUZZ: short driven-wheel slip buzz layer, Ch3/4");
+Console.WriteLine("ACCEL_G_PUNCH_HAPTIC: acceleration punch haptic layer, Ch3/4");
 Console.WriteLine("ROAD_BUMPS: vertical road bump layer, Ch3/4");
 Console.WriteLine("BRAKE_PULSE_HAPTIC: brake-limit pulse haptic layer, left Ch3 only");
 Console.WriteLine("IMPACT: wall/front impact layer, Ch3/4");
@@ -356,6 +358,11 @@ while (true)
         provider.UpdateMasterGainPercent(gainPercent);
         Console.WriteLine($"{DateTime.Now:HH:mm:ss.fff} MASTER_GAIN {gainPercent:0}%");
     }
+    else if (TryParseHapticLowBoost(message, out var lowBoostGain))
+    {
+        provider.UpdateHapticLowBoostGain(lowBoostGain);
+        Console.WriteLine($"{DateTime.Now:HH:mm:ss.fff} HAPTIC_LOW_BOOST gain={lowBoostGain:0.0}");
+    }
     else if (TryParseGearShift(message, out var shift))
     {
         provider.Trigger(shift);
@@ -377,6 +384,10 @@ while (true)
     else if (TryParseWheelspinBuzz(message, out var wheelspinBuzz))
     {
         provider.UpdateWheelspinBuzz(wheelspinBuzz);
+    }
+    else if (TryParseAccelGPunchHaptic(message, out var accelGPunchHaptic))
+    {
+        provider.UpdateAccelGPunchHaptic(accelGPunchHaptic);
     }
     else if (TryParseRoadBumps(message, out var roadBumps))
     {
@@ -478,7 +489,7 @@ while (true)
             }
         }
     }
-    else if (TryParseTriggerModeTest(message, out var triggerSide, out var triggerPreset, out var testCount, out var testOnMs, out var testOffMs, out var testHz, out var testAmp, out var wallStart, out var wallEnd, out var wallStrength))
+    else if (TryParseTriggerModeTest(message, out var triggerSide, out var triggerPreset, out var testCount, out var testOnMs, out var testOffMs, out var testHz, out var testAmp, out var wallStart, out var wallEnd, out var wallStrength, out var zoneMap))
     {
         if (triggerWriter.Connected)
         {
@@ -502,14 +513,14 @@ while (true)
             }
             lock (triggerWriteLock)
             {
-                triggerWriter.TestRightPreset(triggerPreset, testCount, testOnMs, testOffMs, testHz, testAmp, wallStart, wallEnd, wallStrength, triggerSide);
+                triggerWriter.TestRightPreset(triggerPreset, testCount, testOnMs, testOffMs, testHz, testAmp, wallStart, wallEnd, wallStrength, triggerSide, zoneMap);
             }
             lock (triggerStateLock)
             {
                 triggerLoopPausedUntilUtc = DateTime.MinValue;
                 lastTriggerUpdateUtc = DateTime.UtcNow;
             }
-            Console.WriteLine($"{DateTime.Now:HH:mm:ss.fff} TRIGGER_MODE_TEST side={(triggerSide == 0 ? "LR" : triggerSide < 0 ? "L" : "R")} preset={triggerPreset} count={testCount} onMs={testOnMs} offMs={testOffMs} hz={testHz} amp={testAmp} wall={wallStart}-{wallEnd}/{wallStrength}");
+            Console.WriteLine($"{DateTime.Now:HH:mm:ss.fff} TRIGGER_MODE_TEST side={(triggerSide == 0 ? "LR" : triggerSide < 0 ? "L" : "R")} preset={triggerPreset} count={testCount} onMs={testOnMs} offMs={testOffMs} hz={testHz} amp={testAmp} wall={wallStart}-{wallEnd}/{wallStrength} zones={zoneMap}");
         }
         else
         {
@@ -534,7 +545,7 @@ while (true)
     }
 }
 
-static bool TryParseTriggerModeTest(string message, out int side, out string preset, out int count, out int onMs, out int offMs, out int hz, out int amp, out int wallStart, out int wallEnd, out int wallStrength)
+static bool TryParseTriggerModeTest(string message, out int side, out string preset, out int count, out int onMs, out int offMs, out int hz, out int amp, out int wallStart, out int wallEnd, out int wallStrength, out string zoneMap)
 {
     side = 0;
     preset = "off";
@@ -546,6 +557,7 @@ static bool TryParseTriggerModeTest(string message, out int side, out string pre
     wallStart = 0;
     wallEnd = 0;
     wallStrength = 0;
+    zoneMap = "";
     var parts = message.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     if (parts.Length == 0 || !string.Equals(parts[0], "TRIGGER_MODE_TEST", StringComparison.OrdinalIgnoreCase))
     {
@@ -567,6 +579,7 @@ static bool TryParseTriggerModeTest(string message, out int side, out string pre
     wallStart = Math.Max(0, Math.Min(255, ReadInt(values, "wallStart", wallStart)));
     wallEnd = Math.Max(0, Math.Min(255, ReadInt(values, "wallEnd", wallEnd)));
     wallStrength = Math.Max(0, Math.Min(255, ReadInt(values, "wallStrength", wallStrength)));
+    zoneMap = values.TryGetValue("zones", out var zones) ? zones : "";
     if (wallEnd < wallStart)
     {
         (wallStart, wallEnd) = (wallEnd, wallStart);
@@ -629,7 +642,7 @@ static bool TryParseTriggerBrake(string message, out int force, out int start, o
     pulse = Math.Max(0, Math.Min(255, ReadInt(values, "pulse", 0)));
     pulseRate = Math.Max(0, Math.Min(255, ReadInt(values, "pulseRate", 0)));
     vibrateAmp = Math.Max(0, Math.Min(8, ReadInt(values, "vibrateAmp", 0)));
-    vibrateFreq = Math.Max(0, Math.Min(40, ReadInt(values, "vibrateFreq", 0)));
+    vibrateFreq = Math.Max(0, Math.Min(NativeTriggerVibrateFrequencyMax, ReadInt(values, "vibrateFreq", 0)));
     vibrateStartZone = Math.Max(0, Math.Min(9, ReadInt(values, "vibrateStartZone", 0)));
     return true;
 }
@@ -756,6 +769,10 @@ static int EstimateTriggerModeTestDurationMs(string preset, int count, int onMs,
     {
         return 12 * (1200 + 450);
     }
+    if (preset.StartsWith("vibrate_hold_", StringComparison.OrdinalIgnoreCase))
+    {
+        return 5000;
+    }
     return Math.Max(100, count * (onMs + offMs));
 }
 
@@ -787,7 +804,7 @@ static bool TryParseTriggerThrottle(string message, out int force, out int start
     pulse = Math.Max(0, Math.Min(255, ReadInt(values, "pulse", 0)));
     pulseRate = Math.Max(0, Math.Min(255, ReadInt(values, "pulseRate", 0)));
     vibrateAmp = Math.Max(0, Math.Min(8, ReadInt(values, "vibrateAmp", 0)));
-    vibrateFreq = Math.Max(0, Math.Min(40, ReadInt(values, "vibrateFreq", 0)));
+    vibrateFreq = Math.Max(0, Math.Min(NativeTriggerVibrateFrequencyMax, ReadInt(values, "vibrateFreq", 0)));
     vibrateStartZone = Math.Max(0, Math.Min(9, ReadInt(values, "vibrateStartZone", 0)));
     return true;
 }
@@ -807,6 +824,24 @@ static bool TryParseMasterGain(string message, out float percent)
         .Where(pair => pair.Length == 2)
         .ToDictionary(pair => pair[0], pair => pair[1], StringComparer.OrdinalIgnoreCase);
     percent = MathUtil.Clamp(ReadFloat(values, "percent", 100), 0, 100);
+    return true;
+}
+
+static bool TryParseHapticLowBoost(string message, out float gain)
+{
+    gain = 0f;
+    var parts = message.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (parts.Length == 0 || !string.Equals(parts[0], "HAPTIC_LOW_BOOST", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var values = parts
+        .Skip(1)
+        .Select(part => part.Split('=', 2))
+        .Where(pair => pair.Length == 2)
+        .ToDictionary(pair => pair[0], pair => pair[1], StringComparer.OrdinalIgnoreCase);
+    gain = MathUtil.Clamp(ReadFloat(values, "gain", 0), 0, 10);
     return true;
 }
 
@@ -844,7 +879,19 @@ static bool TryParseGearShift(string message, out GearShiftParams shift)
         HighHzLeftGain: MathUtil.Clamp(ReadFloat(values, "highHzLeft", 1), 0, 1),
         HighHzRightGain: MathUtil.Clamp(ReadFloat(values, "highHzRight", 1), 0, 1),
         ParticlesLeftGain: MathUtil.Clamp(ReadFloat(values, "particlesLeft", 1), 0, 1),
-        ParticlesRightGain: MathUtil.Clamp(ReadFloat(values, "particlesRight", 1), 0, 1));
+        ParticlesRightGain: MathUtil.Clamp(ReadFloat(values, "particlesRight", 1), 0, 1),
+        CorePunch: MathUtil.Clamp(ReadFloat(values, "corePunch", 5), 0, 10),
+        CoreLength: MathUtil.Clamp(ReadFloat(values, "coreLength", 5), 0, 10),
+        CoreTail: MathUtil.Clamp(ReadFloat(values, "coreTail", 5), 0, 10),
+        CoreTone: MathUtil.Clamp(ReadFloat(values, "coreTone", 5), 0, 10),
+        HighHzPunch: MathUtil.Clamp(ReadFloat(values, "highHzPunch", 5), 0, 10),
+        HighHzLength: MathUtil.Clamp(ReadFloat(values, "highHzLength", 5), 0, 10),
+        HighHzTail: MathUtil.Clamp(ReadFloat(values, "highHzTail", 5), 0, 10),
+        HighHzTone: MathUtil.Clamp(ReadFloat(values, "highHzTone", 5), 0, 10),
+        ParticlesPunch: MathUtil.Clamp(ReadFloat(values, "particlesPunch", 5), 0, 10),
+        ParticlesLength: MathUtil.Clamp(ReadFloat(values, "particlesLength", 5), 0, 10),
+        ParticlesTail: MathUtil.Clamp(ReadFloat(values, "particlesTail", 5), 0, 10),
+        ParticlesTone: MathUtil.Clamp(ReadFloat(values, "particlesTone", 5), 0, 10));
     return true;
 }
 
@@ -874,6 +921,13 @@ static bool TryParseRevLimit(string message, out RevLimitParams revLimit)
         Volume: MathUtil.Clamp(ReadFloat(values, "volume", 10), 0, 10),
         LeftGain: MathUtil.Clamp(ReadFloat(values, "left", 1), 0, 1),
         RightGain: MathUtil.Clamp(ReadFloat(values, "right", 1), 0, 1),
+        RpmPosition: MathUtil.Clamp(ReadFloat(values, "rpmPosition", 90), 80, 99),
+        FadeRange: MathUtil.Clamp(ReadFloat(values, "fadeRange", 10), 1, 20),
+        Tone: MathUtil.Clamp(ReadFloat(values, "tone", 5), 0, 10),
+        PulseRate: MathUtil.Clamp(ReadFloat(values, "pulseRate", 5), 0, 10),
+        Punch: MathUtil.Clamp(ReadFloat(values, "punch", 5), 0, 10),
+        VehicleRpmScaling: MathUtil.Clamp(ReadFloat(values, "vehicleRpmScaling", 5), 0, 5),
+        StrengthScale: (float)MathUtil.Clamp(ReadFloat(values, "strengthScale", 1), 0, 1.2),
         ReceivedAt: DateTime.UtcNow);
     return true;
 }
@@ -897,8 +951,9 @@ static bool TryParseRumbleKerbs(string message, out RumbleKerbsParams rumbleKerb
     rumbleKerbs = new RumbleKerbsParams(
         FrontLeft: MathUtil.Clamp(ReadFloat(values, "fl", 0), 0, 1),
         FrontRight: MathUtil.Clamp(ReadFloat(values, "fr", 0), 0, 1),
-        Hz: MathUtil.Clamp(ReadFloat(values, "hz", 24), 1, 200),
+        Hz: MathUtil.Clamp(ReadFloat(values, "hz", 24), 1, 160),
         Speed: Math.Max(0, ReadFloat(values, "speed", 0)),
+        Sharpness: MathUtil.Clamp(ReadFloat(values, "sharpness", 5), 0, 10),
         Volume: MathUtil.Clamp(ReadFloat(values, "volume", 10), 0, 10),
         ReceivedAt: DateTime.UtcNow);
     return true;
@@ -949,7 +1004,33 @@ static bool TryParseWheelspinBuzz(string message, out WheelspinBuzzParams wheels
     wheelspinBuzz = new WheelspinBuzzParams(
         Left: MathUtil.Clamp(ReadFloat(values, "left", 0), 0, 1),
         Right: MathUtil.Clamp(ReadFloat(values, "right", 0), 0, 1),
-        Hz: MathUtil.Clamp(ReadFloat(values, "hz", 70), 40, 120),
+        Hz: MathUtil.Clamp(ReadFloat(values, "hz", 70), 20, 160),
+        NoiseRange: MathUtil.Clamp(ReadFloat(values, "noiseRange", 0), 0, 30),
+        Volume: MathUtil.Clamp(ReadFloat(values, "volume", 10), 0, 10),
+        ReceivedAt: DateTime.UtcNow);
+    return true;
+}
+
+static bool TryParseAccelGPunchHaptic(string message, out AccelGPunchHapticParams accelGPunchHaptic)
+{
+    accelGPunchHaptic = default;
+    var parts = message.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (parts.Length == 0 || !string.Equals(parts[0], "ACCEL_G_PUNCH_HAPTIC", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    foreach (var part in parts.Skip(1))
+    {
+        var split = part.Split('=', 2);
+        if (split.Length == 2) values[split[0]] = split[1];
+    }
+
+    accelGPunchHaptic = new AccelGPunchHapticParams(
+        Left: MathUtil.Clamp(ReadFloat(values, "left", 0), 0, 1),
+        Right: MathUtil.Clamp(ReadFloat(values, "right", 0), 0, 1),
+        Hz: MathUtil.Clamp(ReadFloat(values, "hz", 62), 1, 160),
         Volume: MathUtil.Clamp(ReadFloat(values, "volume", 10), 0, 10),
         ReceivedAt: DateTime.UtcNow);
     return true;
@@ -1033,6 +1114,10 @@ static bool TryParseImpact(string message, out ImpactParams impact)
         Slip: Math.Max(0, ReadFloat(values, "slip", 0)),
         Mass: Math.Max(0, ReadFloat(values, "mass", 0)),
         SmashVelDiff: Math.Max(0, ReadFloat(values, "smashVelDiff", 0)),
+        Punch: MathUtil.Clamp(ReadFloat(values, "punch", 5), 0, 10),
+        Length: MathUtil.Clamp(ReadFloat(values, "length", 5), 0, 10),
+        LowHz: MathUtil.Clamp(ReadFloat(values, "lowHz", 44), 1, 120),
+        HighHz: MathUtil.Clamp(ReadFloat(values, "highHz", 78), 1, 160),
         Volume: MathUtil.Clamp(ReadFloat(values, "volume", 10), 0, 10));
     return true;
 }
@@ -1058,6 +1143,11 @@ static bool TryParseSmashableImpact(string message, out SmashableImpactParams im
         Mass: Math.Max(0, ReadFloat(values, "mass", 0)),
         SmashVelDiff: Math.Max(0, ReadFloat(values, "smashVelDiff", 0)),
         Speed: Math.Max(0, ReadFloat(values, "speed", 0)),
+        Punch: MathUtil.Clamp(ReadFloat(values, "punch", 5), 0, 10),
+        Rattle: MathUtil.Clamp(ReadFloat(values, "rattle", 5), 0, 10),
+        Length: MathUtil.Clamp(ReadFloat(values, "length", 5), 0, 10),
+        LightHz: MathUtil.Clamp(ReadFloat(values, "lightHz", 115), 1, 180),
+        HeavyHz: MathUtil.Clamp(ReadFloat(values, "heavyHz", 58), 1, 140),
         Volume: MathUtil.Clamp(ReadFloat(values, "volume", 10), 0, 10));
     return true;
 }
@@ -1088,6 +1178,10 @@ static bool TryParseSideImpact(string message, out SideImpactParams impact)
         AccelZ: Math.Max(0, ReadFloat(values, "accelZ", 0)),
         AngularY: Math.Max(0, ReadFloat(values, "angularY", 0)),
         RecentSteer: Math.Max(0, ReadFloat(values, "recentSteer", 0)),
+        Scrape: MathUtil.Clamp(ReadFloat(values, "scrape", 5), 0, 10),
+        Length: MathUtil.Clamp(ReadFloat(values, "length", 5), 0, 10),
+        LowHz: MathUtil.Clamp(ReadFloat(values, "lowHz", 46), 1, 120),
+        HighHz: MathUtil.Clamp(ReadFloat(values, "highHz", 72), 1, 160),
         Volume: MathUtil.Clamp(ReadFloat(values, "volume", 10), 0, 10));
     return true;
 }
@@ -1243,10 +1337,22 @@ readonly record struct GearShiftParams(
     float HighHzLeftGain,
     float HighHzRightGain,
     float ParticlesLeftGain,
-    float ParticlesRightGain)
+    float ParticlesRightGain,
+    float CorePunch,
+    float CoreLength,
+    float CoreTail,
+    float CoreTone,
+    float HighHzPunch,
+    float HighHzLength,
+    float HighHzTail,
+    float HighHzTone,
+    float ParticlesPunch,
+    float ParticlesLength,
+    float ParticlesTail,
+    float ParticlesTone)
 {
-    public static GearShiftParams DefaultManual => new(1, 0.75f, 0.75f, 0.55f, 700, 8000, 10, 10, 10, 1, 1, 1, 1, 1, 1);
-    public static GearShiftParams DefaultStartup => new(1, 0.75f, 0.75f, 0.55f, 700, 8000, 5, 5, 5, 1, 1, 1, 1, 1, 1);
+    public static GearShiftParams DefaultManual => new(1, 0.75f, 0.75f, 0.55f, 700, 8000, 10, 10, 10, 1, 1, 1, 1, 1, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5);
+    public static GearShiftParams DefaultStartup => new(1, 0.75f, 0.75f, 0.55f, 700, 8000, 5, 5, 5, 1, 1, 1, 1, 1, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5);
 }
 
 readonly record struct RevLimitParams(
@@ -1256,6 +1362,13 @@ readonly record struct RevLimitParams(
     float Volume,
     float LeftGain,
     float RightGain,
+    float RpmPosition,
+    float FadeRange,
+    float Tone,
+    float PulseRate,
+    float Punch,
+    float VehicleRpmScaling,
+    float StrengthScale,
     DateTime ReceivedAt);
 
 readonly record struct RumbleKerbsParams(
@@ -1263,6 +1376,7 @@ readonly record struct RumbleKerbsParams(
     float FrontRight,
     float Hz,
     float Speed,
+    float Sharpness,
     float Volume,
     DateTime ReceivedAt);
 
@@ -1275,6 +1389,14 @@ readonly record struct TireLimitLoadParams(
     DateTime ReceivedAt);
 
 readonly record struct WheelspinBuzzParams(
+    float Left,
+    float Right,
+    float Hz,
+    float NoiseRange,
+    float Volume,
+    DateTime ReceivedAt);
+
+readonly record struct AccelGPunchHapticParams(
     float Left,
     float Right,
     float Hz,
@@ -1306,6 +1428,10 @@ readonly record struct ImpactParams(
     float Slip,
     float Mass,
     float SmashVelDiff,
+    float Punch,
+    float Length,
+    float LowHz,
+    float HighHz,
     float Volume);
 
 readonly record struct SmashableImpactParams(
@@ -1313,6 +1439,11 @@ readonly record struct SmashableImpactParams(
     float Mass,
     float SmashVelDiff,
     float Speed,
+    float Punch,
+    float Rattle,
+    float Length,
+    float LightHz,
+    float HeavyHz,
     float Volume);
 
 readonly record struct SideImpactParams(
@@ -1322,6 +1453,10 @@ readonly record struct SideImpactParams(
     float AccelZ,
     float AngularY,
     float RecentSteer,
+    float Scrape,
+    float Length,
+    float LowHz,
+    float HighHz,
     float Volume);
 
 static class MathUtil
@@ -1333,6 +1468,11 @@ static class MathUtil
     {
         var x = Clamp((value - edge0) / Math.Max(edge1 - edge0, 0.001), 0.0, 1.0);
         return x * x * (3.0 - 2.0 * x);
+    }
+
+    public static double Lerp(double from, double to, double amount)
+    {
+        return from + (to - from) * Clamp(amount, 0.0, 1.0);
     }
 
     public static double Pulse(double tMs, double startMs, double endMs, double amp)
@@ -1373,6 +1513,27 @@ sealed class ActiveGearShift
         LowHitBoost = 1.0 + SlowClass * 0.20 - FastClass * 0.01;
         TailBoost = 1.0 + FastClass * 0.40 - SlowClass * 0.20;
         MetalTailBoost = FastClass;
+        CorePunchGain = MathUtil.Lerp(0.65, 1.35, MathUtil.Clamp(p.CorePunch / 10.0, 0, 1));
+        CoreLengthScale = MathUtil.Lerp(0.72, 1.28, MathUtil.Clamp(p.CoreLength / 10.0, 0, 1));
+        var tailSetting = MathUtil.Clamp(p.CoreTail, 0, 10);
+        CoreTailGain = tailSetting <= 5.0
+            ? tailSetting / 5.0
+            : 1.0 + (tailSetting - 5.0) / 5.0 * 0.80;
+        CoreToneOffsetHz = MathUtil.Lerp(-12.0, 12.0, MathUtil.Clamp(p.CoreTone / 10.0, 0, 1));
+        HighHzPunchGain = MathUtil.Lerp(0.65, 1.35, MathUtil.Clamp(p.HighHzPunch / 10.0, 0, 1));
+        HighHzLengthScale = MathUtil.Lerp(0.72, 1.28, MathUtil.Clamp(p.HighHzLength / 10.0, 0, 1));
+        var highHzTailSetting = MathUtil.Clamp(p.HighHzTail, 0, 10);
+        HighHzTailGain = highHzTailSetting <= 5.0
+            ? highHzTailSetting / 5.0
+            : 1.0 + (highHzTailSetting - 5.0) / 5.0 * 0.80;
+        HighHzToneOffsetHz = MathUtil.Lerp(-12.0, 12.0, MathUtil.Clamp(p.HighHzTone / 10.0, 0, 1));
+        ParticlesPunchGain = MathUtil.Lerp(0.65, 1.35, MathUtil.Clamp(p.ParticlesPunch / 10.0, 0, 1));
+        ParticlesLengthScale = MathUtil.Lerp(0.72, 1.28, MathUtil.Clamp(p.ParticlesLength / 10.0, 0, 1));
+        var particlesTailSetting = MathUtil.Clamp(p.ParticlesTail, 0, 10);
+        ParticlesTailGain = particlesTailSetting <= 5.0
+            ? particlesTailSetting / 5.0
+            : 1.0 + (particlesTailSetting - 5.0) / 5.0 * 0.80;
+        ParticlesToneOffsetHz = MathUtil.Lerp(-12.0, 12.0, MathUtil.Clamp(p.ParticlesTone / 10.0, 0, 1));
         Seed = Environment.TickCount64 * 0.001 + p.RpmRatio * 137.0 + p.Throttle * 53.0 + p.Torque * 29.0 + p.Direction * 17.0;
         TotalSamples = Math.Max(1, (long)(sampleRate * 0.580 * TimeScale));
     }
@@ -1396,6 +1557,18 @@ sealed class ActiveGearShift
     public double LowHitBoost { get; }
     public double TailBoost { get; }
     public double MetalTailBoost { get; }
+    public double CorePunchGain { get; }
+    public double CoreLengthScale { get; }
+    public double CoreTailGain { get; }
+    public double CoreToneOffsetHz { get; }
+    public double HighHzPunchGain { get; }
+    public double HighHzLengthScale { get; }
+    public double HighHzTailGain { get; }
+    public double HighHzToneOffsetHz { get; }
+    public double ParticlesPunchGain { get; }
+    public double ParticlesLengthScale { get; }
+    public double ParticlesTailGain { get; }
+    public double ParticlesToneOffsetHz { get; }
     public double Seed { get; }
     public long TotalSamples { get; }
     public long ElapsedSamples { get; set; }
@@ -1425,9 +1598,13 @@ sealed class ActiveImpact
         AccelG = Math.Max(0, p.AccelG);
         Slip = Math.Max(0, p.Slip);
         Mass = Math.Max(0, p.Mass);
+        PunchGain = MathUtil.Lerp(0.65, 1.35, MathUtil.Clamp(p.Punch / 10.0, 0, 1));
+        LengthScale = MathUtil.Lerp(0.70, 1.30, MathUtil.Clamp(p.Length / 10.0, 0, 1));
+        LowHz = MathUtil.Clamp(p.LowHz, 1, 120);
+        HighHz = MathUtil.Clamp(p.HighHz, 1, 160);
         VolumeGain = MathUtil.Clamp(p.Volume / 10.0, 0, 1);
         DurationScale = 1.0 + Power;
-        TotalSamples = Math.Max(1, (long)(sampleRate * 0.180 * DurationScale));
+        TotalSamples = Math.Max(1, (long)(sampleRate * 0.180 * DurationScale * LengthScale));
     }
 
     public double Power { get; }
@@ -1435,6 +1612,10 @@ sealed class ActiveImpact
     public double AccelG { get; }
     public double Slip { get; }
     public double Mass { get; }
+    public double PunchGain { get; }
+    public double LengthScale { get; }
+    public double LowHz { get; }
+    public double HighHz { get; }
     public double VolumeGain { get; }
     public double DurationScale { get; }
     public long TotalSamples { get; }
@@ -1449,14 +1630,24 @@ sealed class ActiveSmashableImpact
         Mass = Math.Max(0, p.Mass);
         SmashVelDiff = Math.Max(0, p.SmashVelDiff);
         Speed = Math.Max(0, p.Speed);
+        PunchGain = MathUtil.Lerp(0.65, 1.35, MathUtil.Clamp(p.Punch / 10.0, 0, 1));
+        RattleGain = MathUtil.Clamp(p.Rattle / 5.0, 0, 2);
+        LengthScale = MathUtil.Lerp(0.70, 1.30, MathUtil.Clamp(p.Length / 10.0, 0, 1));
+        LightHz = MathUtil.Clamp(p.LightHz, 1, 180);
+        HeavyHz = MathUtil.Clamp(p.HeavyHz, 1, 140);
         VolumeGain = MathUtil.Clamp(p.Volume / 10.0, 0, 1);
-        TotalSamples = Math.Max(1, sampleRate * 95 / 1000);
+        TotalSamples = Math.Max(1, (long)(sampleRate * 95 / 1000.0 * LengthScale));
     }
 
     public double Power { get; }
     public double Mass { get; }
     public double SmashVelDiff { get; }
     public double Speed { get; }
+    public double PunchGain { get; }
+    public double RattleGain { get; }
+    public double LengthScale { get; }
+    public double LightHz { get; }
+    public double HeavyHz { get; }
     public double VolumeGain { get; }
     public long TotalSamples { get; }
     public long ElapsedSamples { get; set; }
@@ -1472,8 +1663,12 @@ sealed class ActiveSideImpact
         AccelZ = Math.Max(0, p.AccelZ);
         AngularY = Math.Max(0, p.AngularY);
         RecentSteer = Math.Max(0, p.RecentSteer);
+        ScrapeGain = MathUtil.Clamp(p.Scrape / 5.0, 0, 2);
+        LengthScale = MathUtil.Lerp(0.70, 1.30, MathUtil.Clamp(p.Length / 10.0, 0, 1));
+        LowHz = MathUtil.Clamp(p.LowHz, 1, 120);
+        HighHz = MathUtil.Clamp(p.HighHz, 1, 160);
         VolumeGain = MathUtil.Clamp(p.Volume / 10.0, 0, 1);
-        TotalSamples = Math.Max(1, sampleRate * 160 / 1000);
+        TotalSamples = Math.Max(1, (long)(sampleRate * 160 / 1000.0 * LengthScale));
     }
 
     public double Power { get; }
@@ -1482,6 +1677,10 @@ sealed class ActiveSideImpact
     public double AccelZ { get; }
     public double AngularY { get; }
     public double RecentSteer { get; }
+    public double ScrapeGain { get; }
+    public double LengthScale { get; }
+    public double LowHz { get; }
+    public double HighHz { get; }
     public double VolumeGain { get; }
     public long TotalSamples { get; }
     public long ElapsedSamples { get; set; }
@@ -1522,6 +1721,7 @@ sealed class GearShiftCoreProvider : IWaveProvider
     private readonly WaveFormat format;
     private readonly SampleEncoding sampleEncoding;
     private float masterGain;
+    private float hapticLowBoostGain;
     private readonly object gateLock = new();
     private readonly Random random = new();
     private ActiveGearShift? activeShift;
@@ -1533,6 +1733,7 @@ sealed class GearShiftCoreProvider : IWaveProvider
     private RumbleKerbsParams rumbleKerbs;
     private TireLimitLoadParams tireLimitLoad;
     private WheelspinBuzzParams wheelspinBuzz;
+    private AccelGPunchHapticParams accelGPunchHaptic;
     private RoadBumpsParams roadBumps;
     private BrakePulseHapticParams brakePulseHaptic;
     private double phase;
@@ -1546,6 +1747,8 @@ sealed class GearShiftCoreProvider : IWaveProvider
     private double tireLimitRightPhase;
     private double wheelspinLeftPhase;
     private double wheelspinRightPhase;
+    private double accelGPunchHapticLeftPhase;
+    private double accelGPunchHapticRightPhase;
     private double roadBumpsLeftPhase;
     private double roadBumpsRightPhase;
     private double brakePulseHapticPhase;
@@ -1568,6 +1771,11 @@ sealed class GearShiftCoreProvider : IWaveProvider
     public void UpdateMasterGainPercent(float percent)
     {
         masterGain = MathUtil.Clamp(ProviderDefaultMasterGain * (percent / 100f), 0f, ProviderDefaultMasterGain);
+    }
+
+    public void UpdateHapticLowBoostGain(float gain)
+    {
+        hapticLowBoostGain = MathUtil.Clamp(gain, 0f, 10f);
     }
 
     public void Trigger(GearShiftParams parameters)
@@ -1615,6 +1823,14 @@ sealed class GearShiftCoreProvider : IWaveProvider
         lock (gateLock)
         {
             wheelspinBuzz = parameters;
+        }
+    }
+
+    public void UpdateAccelGPunchHaptic(AccelGPunchHapticParams parameters)
+    {
+        lock (gateLock)
+        {
+            accelGPunchHaptic = parameters;
         }
     }
 
@@ -1926,6 +2142,20 @@ sealed class GearShiftCoreProvider : IWaveProvider
                 AddSample(buffer, outOffset + sampleEncoding.BytesPerSample * 3, wheelspinSamples.Right);
             }
 
+            AccelGPunchHapticParams accelPunch;
+            lock (gateLock)
+            {
+                accelPunch = accelGPunchHaptic;
+            }
+
+            var accelPunchSamples = ComputeAccelGPunchHapticSamples(accelPunch);
+            if (Math.Abs(accelPunchSamples.Left) > 0.000001f || Math.Abs(accelPunchSamples.Right) > 0.000001f)
+            {
+                var outOffset = offset + bytesWritten;
+                AddSample(buffer, outOffset + sampleEncoding.BytesPerSample * 2, accelPunchSamples.Left);
+                AddSample(buffer, outOffset + sampleEncoding.BytesPerSample * 3, accelPunchSamples.Right);
+            }
+
             RoadBumpsParams bumps;
             lock (gateLock)
             {
@@ -1964,19 +2194,28 @@ sealed class GearShiftCoreProvider : IWaveProvider
         if (rev.Volume <= 0 || rev.Rpm <= 0 || rev.MaxRpm <= 1000) return 0;
         if ((DateTime.UtcNow - rev.ReceivedAt).TotalMilliseconds > 250) return 0;
 
-        const double preRedLineMarginPercent = 10.0;
         const double outputGain = 1.0;
-        var marginFactor = MathUtil.Clamp(preRedLineMarginPercent, 0, 95) / 100.0;
-        var startRpm = MathUtil.Clamp(rev.MaxRpm * (1 - marginFactor), Math.Max(1000, rev.IdleRpm), rev.MaxRpm - 1);
-        var endRpm = Math.Max(startRpm + 1, rev.MaxRpm);
+        var startRatio = MathUtil.Clamp(rev.RpmPosition <= 0 ? 90 : rev.RpmPosition, 80, 99) / 100.0;
+        var fadeRatio = MathUtil.Clamp(rev.FadeRange <= 0 ? 10 : rev.FadeRange, 1, 20) / 100.0;
+        var startRpm = MathUtil.Clamp(rev.MaxRpm * startRatio, Math.Max(1000, rev.IdleRpm), rev.MaxRpm - 1);
+        var endRpm = Math.Max(startRpm + 1, Math.Min(rev.MaxRpm, rev.MaxRpm * (startRatio + fadeRatio)));
         var intensity = MathUtil.Clamp((rev.Rpm - startRpm) / Math.Max(endRpm - startRpm, 1), 0, 1);
         if (intensity <= 0) return 0;
 
-        var rpmClass = MathUtil.Clamp((rev.MaxRpm - 5500.0) / Math.Max(10000.0 - 5500.0, 1), 0, 1);
+        var vehicleScaling = MathUtil.Clamp(rev.VehicleRpmScaling, 0, 5) / 5.0;
+        var rpmClass = MathUtil.Clamp((rev.MaxRpm - 5500.0) / Math.Max(10000.0 - 5500.0, 1), 0, 1) * vehicleScaling;
         var lowHz = 46 + (66 - 46) * rpmClass;
         var highHz = 76 + (112 - 76) * rpmClass;
-        var hz = MathUtil.Clamp(lowHz + (highHz - lowHz) * intensity, 36, 130);
-        var amp = intensity * outputGain * masterGain * MathUtil.Clamp(rev.Volume / 10.0, 0, 1);
+        var toneOffset = (MathUtil.Clamp(rev.Tone, 0, 10) - 5) * 4.0;
+        var pulseScale = 0.82 + (MathUtil.Clamp(rev.PulseRate, 0, 10) / 10.0) * 0.36;
+        var hz = MathUtil.Clamp((lowHz + (highHz - lowHz) * intensity + toneOffset) * pulseScale, 36, 150);
+        var punchGain = 0.65 + (MathUtil.Clamp(rev.Punch, 0, 10) / 10.0) * 0.70;
+        var amp = intensity
+            * outputGain
+            * masterGain
+            * MathUtil.Clamp(rev.Volume / 10.0, 0, 1)
+            * punchGain
+            * MathUtil.Clamp(rev.StrengthScale <= 0 ? 1 : rev.StrengthScale, 0, 1.2);
 
         var phaseStep = Math.Tau * hz / format.SampleRate;
         var sample = (float)(Math.Sin(revLimitPhase) * amp);
@@ -1995,14 +2234,14 @@ sealed class GearShiftCoreProvider : IWaveProvider
         if (leftLevel <= 0 && rightLevel <= 0) return (0, 0);
 
         var volumeGain = MathUtil.Clamp(kerbs.Volume / 10.0, 0, 1);
-        var hz = MathUtil.Clamp(kerbs.Hz, 18, 82);
+        var hz = MathUtil.Clamp(kerbs.Hz, 1, 160);
         var ampBase = 0.70 * masterGain * volumeGain;
         var phaseStep = Math.Tau * hz / format.SampleRate;
 
         var left = 0.0;
         if (leftLevel > 0)
         {
-            left = Math.Sin(rumbleKerbsLeftPhase) * ampBase * leftLevel;
+            left = ShapeRumbleKerbWave(Math.Sin(rumbleKerbsLeftPhase), kerbs.Sharpness) * ampBase * leftLevel;
             rumbleKerbsLeftPhase += phaseStep;
             if (rumbleKerbsLeftPhase >= Math.Tau) rumbleKerbsLeftPhase -= Math.Tau;
         }
@@ -2010,12 +2249,32 @@ sealed class GearShiftCoreProvider : IWaveProvider
         var right = 0.0;
         if (rightLevel > 0)
         {
-            right = Math.Sin(rumbleKerbsRightPhase) * ampBase * rightLevel;
+            right = ShapeRumbleKerbWave(Math.Sin(rumbleKerbsRightPhase), kerbs.Sharpness) * ampBase * rightLevel;
             rumbleKerbsRightPhase += phaseStep;
             if (rumbleKerbsRightPhase >= Math.Tau) rumbleKerbsRightPhase -= Math.Tau;
         }
 
         return ((float)MathUtil.Clamp(left, -1.0, 1.0), (float)MathUtil.Clamp(right, -1.0, 1.0));
+    }
+
+    private static double ShapeRumbleKerbWave(double sine, double sharpness)
+    {
+        var amount = (MathUtil.Clamp(sharpness, 0, 10) - 5.0) / 5.0;
+        if (Math.Abs(amount) < 0.0001)
+        {
+            return sine;
+        }
+
+        var sign = Math.Sign(sine);
+        var magnitude = Math.Abs(sine);
+        if (amount > 0)
+        {
+            var sharper = sign * Math.Pow(magnitude, 0.45);
+            return MathUtil.Clamp(MathUtil.Lerp(sine, sharper, amount), -1.0, 1.0);
+        }
+
+        var softer = sine * magnitude;
+        return MathUtil.Clamp(MathUtil.Lerp(sine, softer, -amount), -1.0, 1.0);
     }
 
     private (float Left, float Right) ComputeTireLimitLoadSamples(TireLimitLoadParams tire)
@@ -2081,7 +2340,8 @@ sealed class GearShiftCoreProvider : IWaveProvider
         var left = 0.0;
         if (leftLevel > 0)
         {
-            var hz = MathUtil.Clamp(wheelspin.Hz - leftLevel * 15.0, 50, 110);
+            var noise = (Random.Shared.NextDouble() * 2.0 - 1.0) * wheelspin.NoiseRange;
+            var hz = MathUtil.Clamp(wheelspin.Hz - leftLevel * 15.0 + noise, 20, 160);
             var phaseStep = Math.Tau * hz / format.SampleRate;
             left = (Math.Sin(wheelspinLeftPhase) * 0.82 + Math.Sin(wheelspinLeftPhase * 2.03) * 0.18) * ampBase * leftLevel;
             wheelspinLeftPhase += phaseStep;
@@ -2091,11 +2351,50 @@ sealed class GearShiftCoreProvider : IWaveProvider
         var right = 0.0;
         if (rightLevel > 0)
         {
-            var hz = MathUtil.Clamp(wheelspin.Hz - rightLevel * 15.0, 50, 110);
+            var noise = (Random.Shared.NextDouble() * 2.0 - 1.0) * wheelspin.NoiseRange;
+            var hz = MathUtil.Clamp(wheelspin.Hz - rightLevel * 15.0 + noise, 20, 160);
             var phaseStep = Math.Tau * hz / format.SampleRate;
             right = (Math.Sin(wheelspinRightPhase) * 0.82 + Math.Sin(wheelspinRightPhase * 2.03) * 0.18) * ampBase * rightLevel;
             wheelspinRightPhase += phaseStep;
             if (wheelspinRightPhase >= Math.Tau) wheelspinRightPhase -= Math.Tau;
+        }
+
+        return ((float)MathUtil.Clamp(left, -1.0, 1.0), (float)MathUtil.Clamp(right, -1.0, 1.0));
+    }
+
+    private (float Left, float Right) ComputeAccelGPunchHapticSamples(AccelGPunchHapticParams accelPunch)
+    {
+        if (accelPunch.Volume <= 0) return (0, 0);
+        if ((DateTime.UtcNow - accelPunch.ReceivedAt).TotalMilliseconds > 250) return (0, 0);
+
+        var leftLevel = MathUtil.Clamp(accelPunch.Left, 0, 1);
+        var rightLevel = MathUtil.Clamp(accelPunch.Right, 0, 1);
+        if (leftLevel <= 0 && rightLevel <= 0) return (0, 0);
+
+        var volumeGain = MathUtil.Clamp(accelPunch.Volume / 10.0, 0, 1);
+        var hz = MathUtil.Clamp(accelPunch.Hz, 1, 160);
+        var ampBase = 0.64 * masterGain * volumeGain;
+
+        var left = 0.0;
+        if (leftLevel > 0)
+        {
+            var phaseStep = Math.Tau * hz / format.SampleRate;
+            left = (Math.Sin(accelGPunchHapticLeftPhase) * 0.88 + Math.Sin(accelGPunchHapticLeftPhase * 2.01) * 0.12)
+                * ampBase
+                * leftLevel;
+            accelGPunchHapticLeftPhase += phaseStep;
+            if (accelGPunchHapticLeftPhase >= Math.Tau) accelGPunchHapticLeftPhase -= Math.Tau;
+        }
+
+        var right = 0.0;
+        if (rightLevel > 0)
+        {
+            var phaseStep = Math.Tau * hz / format.SampleRate;
+            right = (Math.Sin(accelGPunchHapticRightPhase) * 0.88 + Math.Sin(accelGPunchHapticRightPhase * 2.01) * 0.12)
+                * ampBase
+                * rightLevel;
+            accelGPunchHapticRightPhase += phaseStep;
+            if (accelGPunchHapticRightPhase >= Math.Tau) accelGPunchHapticRightPhase -= Math.Tau;
         }
 
         return ((float)MathUtil.Clamp(left, -1.0, 1.0), (float)MathUtil.Clamp(right, -1.0, 1.0));
@@ -2153,9 +2452,9 @@ sealed class GearShiftCoreProvider : IWaveProvider
 
     private static double ComputeImpactEffect(ActiveImpact impact, double t)
     {
-        var scale = impact.DurationScale;
+        var scale = impact.DurationScale * impact.LengthScale;
         if (t < 0 || t > 180 * scale) return 0;
-        var attack = MathUtil.Pulse(t, 0, 42 * scale, 100);
+        var attack = MathUtil.Pulse(t, 0, 42 * scale, 100 * impact.PunchGain);
         var body = 0.0;
         if (t >= 35 * scale && t <= 120 * scale)
         {
@@ -2187,23 +2486,25 @@ sealed class GearShiftCoreProvider : IWaveProvider
         }
 
         var severity = MathUtil.Clamp(Math.Max(impact.Power, Math.Max(impact.SpeedDrop / 90.0, impact.AccelG / 160.0)), 0, 1);
-        return MathUtil.Clamp(78 - severity * 34 + MathUtil.Clamp(impact.Slip / 40.0, 0, 1) * 8, 38, 92);
+        var slipLift = MathUtil.Clamp(impact.Slip / 40.0, 0, 1) * 8;
+        return MathUtil.Clamp(impact.HighHz + (impact.LowHz - impact.HighHz) * severity + slipLift, 1, 160);
     }
 
     private static double ComputeSmashableImpactEffect(ActiveSmashableImpact impact, double t)
     {
-        if (t < 0 || t > 95) return 0;
-        var attack = MathUtil.Pulse(t, 0, 16, 78);
+        var scale = impact.LengthScale;
+        if (t < 0 || t > 95 * scale) return 0;
+        var attack = MathUtil.Pulse(t, 0, 16 * scale, 78 * impact.PunchGain);
         var rattle = 0.0;
-        if (t >= 10 && t <= 68)
+        if (t >= 10 * scale && t <= 68 * scale)
         {
-            var x = (t - 10) / 58.0;
-            rattle = 46 * Math.Pow(1 - x, 0.95) * (0.58 + 0.42 * Math.Sin(t * 1.42));
+            var x = (t - 10 * scale) / Math.Max(58.0 * scale, 0.001);
+            rattle = 46 * impact.RattleGain * Math.Pow(1 - x, 0.95) * (0.58 + 0.42 * Math.Sin(t * 1.42));
         }
         var tail = 0.0;
-        if (t >= 54)
+        if (t >= 54 * scale)
         {
-            var x = MathUtil.Clamp((t - 54) / 41.0, 0, 1);
+            var x = MathUtil.Clamp((t - 54 * scale) / Math.Max(41.0 * scale, 0.001), 0, 1);
             tail = 20 * Math.Pow(1 - x, 1.6);
         }
         var speedBoost = MathUtil.Clamp(impact.Speed / 180.0, 0, 1) * 0.18;
@@ -2212,30 +2513,29 @@ sealed class GearShiftCoreProvider : IWaveProvider
 
     private static double ComputeSmashableImpactFrequency(ActiveSmashableImpact impact)
     {
-        const double lightObjectHz = 115;
-        const double heavyObjectHz = 58;
         var massMix = impact.Mass > 0
             ? MathUtil.Clamp((Math.Log(1 + impact.Mass) / Math.Log(1 + 90)), 0, 1)
             : 0.15;
         var speedLift = MathUtil.Clamp(impact.Speed / 180.0, 0, 1) * 14;
         var velLift = MathUtil.Clamp(impact.SmashVelDiff / 0.25, 0, 1) * 8;
-        return MathUtil.Clamp(lightObjectHz + (heavyObjectHz - lightObjectHz) * massMix + speedLift + velLift, 54, 130);
+        return MathUtil.Clamp(impact.LightHz + (impact.HeavyHz - impact.LightHz) * massMix + speedLift + velLift, 1, 180);
     }
 
     private static double ComputeSideImpactEffect(ActiveSideImpact impact, double t)
     {
-        if (t < 0 || t > 160) return 0;
-        var attack = MathUtil.Pulse(t, 0, 34, 95);
+        var scale = impact.LengthScale;
+        if (t < 0 || t > 160 * scale) return 0;
+        var attack = MathUtil.Pulse(t, 0, 34 * scale, 95);
         var scrape = 0.0;
-        if (t >= 26 && t <= 118)
+        if (t >= 26 * scale && t <= 118 * scale)
         {
-            var x = (t - 26) / 92.0;
-            scrape = 58 * Math.Pow(1 - x, 1.15) * (0.72 + 0.28 * Math.Sin(t * 0.82));
+            var x = (t - 26 * scale) / Math.Max(92.0 * scale, 0.001);
+            scrape = 58 * impact.ScrapeGain * Math.Pow(1 - x, 1.15) * (0.72 + 0.28 * Math.Sin(t * 0.82));
         }
         var tail = 0.0;
-        if (t >= 92)
+        if (t >= 92 * scale)
         {
-            var x = MathUtil.Clamp((t - 92) / 68.0, 0, 1);
+            var x = MathUtil.Clamp((t - 92 * scale) / Math.Max(68.0 * scale, 0.001), 0, 1);
             tail = 22 * Math.Pow(1 - x, 1.7);
         }
         return MathUtil.Clamp((attack + scrape + tail) * (0.55 + impact.Power * 0.65), 0, 100);
@@ -2245,12 +2545,12 @@ sealed class GearShiftCoreProvider : IWaveProvider
     {
         var severity = MathUtil.Clamp(Math.Max(impact.Power, Math.Max(impact.DVel / 8.0, impact.AccelX / 20.0)), 0, 1);
         var steerThinness = MathUtil.Clamp(impact.RecentSteer / 80.0, 0, 1) * 8;
-        return MathUtil.Clamp(72 - severity * 26 + steerThinness, 42, 88);
+        return MathUtil.Clamp(impact.HighHz + (impact.LowHz - impact.HighHz) * severity + steerThinness, 1, 160);
     }
 
     private double ComputeEffect(ActiveGearShift s, double t)
     {
-        var scale = s.TimeScale;
+        var scale = s.TimeScale * s.CoreLengthScale;
         if (t < 0 || t > 360 * scale) return 0;
 
         var shiftForce = MathUtil.Clamp(
@@ -2278,7 +2578,7 @@ sealed class GearShiftCoreProvider : IWaveProvider
                     (0.50 + 0.50 * Math.Sin(t * 0.58 + Math.Sin(t * 0.13) * 1.80)) *
                     (0.70 + 0.30 * Math.Sin(t * 0.96));
                 var metalTail = 22 * s.MetalTailBoost * uMetalDecay * uMetalRing;
-                tail = baseTail + metalTail;
+                tail = (baseTail + metalTail) * s.CoreTailGain;
             }
         }
         else
@@ -2291,40 +2591,40 @@ sealed class GearShiftCoreProvider : IWaveProvider
                 var dx = (t - 175 * scale) / (200 * scale);
                 var dDecay = Math.Pow(1 - dx, 2.10);
                 var dRing = 0.50 + 0.50 * Math.Sin(t * 0.45);
-                tail = 18 * s.TailBoost * dDecay * dRing;
+                tail = 18 * s.TailBoost * dDecay * dRing * s.CoreTailGain;
             }
         }
 
-        return MathUtil.Clamp((hit1 + hit2 + hit3 + tail) * shiftForce, 0, 100);
+        return MathUtil.Clamp((hit1 + hit2 + hit3 + tail) * shiftForce * s.CorePunchGain, 0, 100);
     }
 
     private double ComputeFrequency(ActiveGearShift s, double t)
     {
-        var scale = s.TimeScale;
-        if (t < 0 || t > 360 * scale) return 44;
+        var scale = s.TimeScale * s.CoreLengthScale;
+        if (t < 0 || t > 360 * scale) return MathUtil.Clamp(44 + s.CoreToneOffsetHz, 32, 110);
 
         if (s.Direction >= 0)
         {
             var upFirstHz = 65 - s.SlowClass * 4 + s.FastClass * 3;
             var upSecondHz = 72 - s.SlowClass * 3 + s.FastClass * 3;
-            if (t < 72 * scale) return ApplyWhiteNoise(upFirstHz, s.ElapsedSamples);
-            if (t < 114 * scale) return ApplyWhiteNoise(upSecondHz, s.ElapsedSamples);
-            return MathUtil.Clamp(ApplyWhiteNoise(78 + s.FastClass * 12 - s.SlowClass * 6 + Math.Sin(t * 0.52) * (4 + s.FastClass * 3), s.ElapsedSamples), 64, 98);
+            if (t < 72 * scale) return MathUtil.Clamp(ApplyWhiteNoise(upFirstHz + s.CoreToneOffsetHz, s.ElapsedSamples), 32, 110);
+            if (t < 114 * scale) return MathUtil.Clamp(ApplyWhiteNoise(upSecondHz + s.CoreToneOffsetHz, s.ElapsedSamples), 32, 110);
+            return MathUtil.Clamp(ApplyWhiteNoise(78 + s.FastClass * 12 - s.SlowClass * 6 + s.CoreToneOffsetHz + Math.Sin(t * 0.52) * (4 + s.FastClass * 3), s.ElapsedSamples), 52, 110);
         }
         else
         {
             var dnFirstHz = 70 - s.SlowClass * 4 + s.FastClass * 3;
             var dnSecondHz = 74 - s.SlowClass * 3 + s.FastClass * 3;
-            if (t < 90 * scale) return ApplyWhiteNoise(dnFirstHz, s.ElapsedSamples);
-            if (t < 125 * scale) return ApplyWhiteNoise(dnSecondHz, s.ElapsedSamples);
+            if (t < 90 * scale) return MathUtil.Clamp(ApplyWhiteNoise(dnFirstHz + s.CoreToneOffsetHz, s.ElapsedSamples), 32, 110);
+            if (t < 125 * scale) return MathUtil.Clamp(ApplyWhiteNoise(dnSecondHz + s.CoreToneOffsetHz, s.ElapsedSamples), 32, 110);
             var dx = MathUtil.Clamp((t - 130 * scale) / (185 * scale), 0, 1);
-            return MathUtil.Clamp(ApplyWhiteNoise(76 + s.FastClass * 12 - s.SlowClass * 6 + Math.Sin(t * 0.46) * (4 + s.FastClass * 3) * (1 - dx), s.ElapsedSamples), 62, 98);
+            return MathUtil.Clamp(ApplyWhiteNoise(76 + s.FastClass * 12 - s.SlowClass * 6 + s.CoreToneOffsetHz + Math.Sin(t * 0.46) * (4 + s.FastClass * 3) * (1 - dx), s.ElapsedSamples), 50, 110);
         }
     }
 
     private double ComputeHighHzEffect(ActiveGearShift s, double t)
     {
-        var scale = s.TimeScale;
+        var scale = s.TimeScale * s.HighHzLengthScale;
         if (t < 0 || t > 500 * scale) return 0;
 
         var layerForce = MathUtil.Clamp(
@@ -2353,7 +2653,7 @@ sealed class GearShiftCoreProvider : IWaveProvider
                     (PseudoNoise(t * 0.071 + 3.10) * 2 - 1) * 0.12;
                 var body = 125 * (peak1 + peak2 + peak3) * fadeOut * shimmer + 85 * initialSpike;
                 var noisyTail = 42 * noiseGate * fadeOut * (0.65 + noise);
-                output = body + noisyTail;
+                output = body + noisyTail * s.HighHzTailGain;
             }
         }
         else
@@ -2376,41 +2676,41 @@ sealed class GearShiftCoreProvider : IWaveProvider
                     (PseudoNoise(t * 0.067 + 5.40) * 2 - 1) * 0.12;
                 var body = 132 * (peak1 + peak2 + peak3) * fadeOut * shimmer + 80 * initialSpike;
                 var noisyTail = 48 * noiseGate * fadeOut * (0.65 + noise);
-                output = body + noisyTail;
+                output = body + noisyTail * s.HighHzTailGain;
             }
         }
 
-        return MathUtil.Clamp(output * layerForce, 0, 100);
+        return MathUtil.Clamp(output * layerForce * s.HighHzPunchGain, 0, 100);
     }
 
     private double ComputeHighHzFrequency(ActiveGearShift s, double t)
     {
-        var scale = s.TimeScale;
-        if (t < 0 || t > 500 * scale) return 82;
+        var scale = s.TimeScale * s.HighHzLengthScale;
+        if (t < 0 || t > 500 * scale) return MathUtil.Clamp(82 + s.HighHzToneOffsetHz, 48, 120);
 
         if (s.Direction >= 0)
         {
-            if (t < 150 * scale || t > 330 * scale) return 82;
+            if (t < 150 * scale || t > 330 * scale) return MathUtil.Clamp(82 + s.HighHzToneOffsetHz, 48, 120);
             var x = MathUtil.Clamp((t - 138 * scale) / (365 * scale), 0, 1);
             var baseHz = 76 + s.FastClass * 4 - s.SlowClass * 6;
             var sweep = Math.Sin(Math.PI * x) * 14;
             var wobble = Math.Sin(t * 0.060) * 4;
-            return MathUtil.Clamp(ApplyWhiteNoise(baseHz + sweep + wobble, s.ElapsedSamples), 68, 98);
+            return MathUtil.Clamp(ApplyWhiteNoise(baseHz + sweep + wobble + s.HighHzToneOffsetHz, s.ElapsedSamples), 56, 112);
         }
         else
         {
-            if (t < 200 * scale || t > 490 * scale) return 82;
+            if (t < 200 * scale || t > 490 * scale) return MathUtil.Clamp(82 + s.HighHzToneOffsetHz, 48, 120);
             var x = MathUtil.Clamp((t - 160 * scale) / (405 * scale), 0, 1);
             var baseHz = 80 + s.FastClass * 5 - s.SlowClass * 5;
             var sweep = Math.Sin(Math.PI * x) * 13;
             var wobble = Math.Sin(t * 0.052) * 4;
-            return MathUtil.Clamp(ApplyWhiteNoise(baseHz + sweep + wobble, s.ElapsedSamples), 68, 98);
+            return MathUtil.Clamp(ApplyWhiteNoise(baseHz + sweep + wobble + s.HighHzToneOffsetHz, s.ElapsedSamples), 56, 112);
         }
     }
 
     private double ComputeParticlesEffect(ActiveGearShift s, double t)
     {
-        var scale = s.TimeScale;
+        var scale = s.TimeScale * s.ParticlesLengthScale;
         const double particleOffsetMs = 20.0;
         var offsetEndPadding = Math.Max(particleOffsetMs, 0);
         if (t < 0 || t > (560 + offsetEndPadding) * scale) return 0;
@@ -2439,7 +2739,8 @@ sealed class GearShiftCoreProvider : IWaveProvider
                     JParticle(x, 0.68, 0.008, 0.95, s.Seed + 7) +
                     JParticle(x, 0.81, 0.010, 0.80, s.Seed + 8);
                 var fade = Math.Pow(1 - x, 0.35);
-                output = 180 * burst * fade;
+                var tailGain = MathUtil.Lerp(1.0, s.ParticlesTailGain, MathUtil.SmoothStep(0.42, 1.0, x));
+                output = 180 * burst * fade * tailGain;
             }
         }
         else
@@ -2461,31 +2762,32 @@ sealed class GearShiftCoreProvider : IWaveProvider
                     JParticle(x, 0.75, 0.007, 0.92, s.Seed + 18) +
                     JParticle(x, 0.86, 0.010, 0.75, s.Seed + 19);
                 var fade = Math.Pow(1 - x, 0.32);
-                output = 190 * burst * fade;
+                var tailGain = MathUtil.Lerp(1.0, s.ParticlesTailGain, MathUtil.SmoothStep(0.42, 1.0, x));
+                output = 190 * burst * fade * tailGain;
             }
         }
 
-        return MathUtil.Clamp(output * layerForce, 0, 100);
+        return MathUtil.Clamp(output * layerForce * s.ParticlesPunchGain, 0, 100);
     }
 
     private double ComputeParticlesFrequency(ActiveGearShift s, double t)
     {
-        var scale = s.TimeScale;
-        if (t < 0 || t > 520 * scale) return 88;
+        var scale = s.TimeScale * s.ParticlesLengthScale;
+        if (t < 0 || t > 520 * scale) return MathUtil.Clamp(88 + s.ParticlesToneOffsetHz, 48, 120);
 
         if (s.Direction >= 0)
         {
-            if (t < 110 * scale || t > 430 * scale) return 88;
+            if (t < 110 * scale || t > 430 * scale) return MathUtil.Clamp(88 + s.ParticlesToneOffsetHz, 48, 120);
             var baseHz = 84 + s.FastClass * 5 - s.SlowClass * 4;
             var jump = Math.Sin(t * 0.19) * 5 + Math.Sin(t * 0.47) * 3;
-            return MathUtil.Clamp(baseHz + jump, 72, 98);
+            return MathUtil.Clamp(baseHz + jump + s.ParticlesToneOffsetHz, 56, 112);
         }
         else
         {
-            if (t < 125 * scale || t > 500 * scale) return 88;
+            if (t < 125 * scale || t > 500 * scale) return MathUtil.Clamp(88 + s.ParticlesToneOffsetHz, 48, 120);
             var baseHz = 88 + s.FastClass * 5 - s.SlowClass * 4;
             var jump = Math.Sin(t * 0.17) * 5 + Math.Sin(t * 0.43) * 3;
-            return MathUtil.Clamp(baseHz + jump, 72, 98);
+            return MathUtil.Clamp(baseHz + jump + s.ParticlesToneOffsetHz, 56, 112);
         }
     }
 
@@ -2522,8 +2824,31 @@ sealed class GearShiftCoreProvider : IWaveProvider
         return hz + whiteNoiseValue;
     }
 
-    private void WriteSample(byte[] buffer, int offset, float value)
+    private float ApplyHapticLowBoost(float value)
     {
+        var boost = MathUtil.Clamp(hapticLowBoostGain / 10f, 0f, 1f);
+        if (boost <= 0f)
+        {
+            return value;
+        }
+
+        var abs = Math.Abs(value);
+        if (abs <= 0.0001f)
+        {
+            return value;
+        }
+
+        var lowFocus = 1.0 - MathUtil.SmoothStep(0.06, 0.62, abs);
+        var dynamicGain = 1.0 + boost * 1.8 * lowFocus;
+        return (float)MathUtil.Clamp(Math.CopySign(abs * dynamicGain, value), -1.0, 1.0);
+    }
+
+    private void WriteSample(byte[] buffer, int offset, float value, bool applyLowBoost = true)
+    {
+        if (applyLowBoost)
+        {
+            value = ApplyHapticLowBoost(value);
+        }
         value = MathUtil.Clamp(value, -1.0f, 1.0f);
         switch (sampleEncoding.Kind)
         {
@@ -2546,19 +2871,19 @@ sealed class GearShiftCoreProvider : IWaveProvider
             case SampleKind.Float32:
             {
                 var current = BitConverter.ToSingle(buffer, offset);
-                WriteSample(buffer, offset, current + value);
+                WriteSample(buffer, offset, current + ApplyHapticLowBoost(value), applyLowBoost: false);
                 break;
             }
             case SampleKind.Pcm16:
             {
                 var current = BitConverter.ToInt16(buffer, offset) / (float)short.MaxValue;
-                WriteSample(buffer, offset, current + value);
+                WriteSample(buffer, offset, current + ApplyHapticLowBoost(value), applyLowBoost: false);
                 break;
             }
             case SampleKind.Pcm32:
             {
                 var current = BitConverter.ToInt32(buffer, offset) / (float)int.MaxValue;
-                WriteSample(buffer, offset, current + value);
+                WriteSample(buffer, offset, current + ApplyHapticLowBoost(value), applyLowBoost: false);
                 break;
             }
         }
