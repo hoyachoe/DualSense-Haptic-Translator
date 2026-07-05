@@ -127,24 +127,11 @@ This app's telemetry listener is started with `--host 0.0.0.0`, which follows th
 - `smashable_vel_diff`: object impact candidate.
 - `accel_g`: collision and body shock candidate.
 
-## Development / Manual Run
+## Source / Development Note
 
-This section is only for people running the project from source. Release ZIP users should normally use `DualSense Haptic Translator.exe` instead.
+Release ZIP users should use `DualSense Haptic Translator.exe`. The launcher starts the required server automatically.
 
-For source/development runs, use:
-
-```bat
-run_telemetry_grapher.bat
-```
-
-You can also start the pieces manually:
-
-```bat
-start_haptic_server.bat
-python telemetry_grapher.py --host 0.0.0.0 --port 8800 --haptic-event-port 18801
-```
-
-The DualSense output server listens for local haptic events on `127.0.0.1:18801` and sends translated haptic output to DualSense channels 3 and 4.
+Source runs are mainly for development and debugging. If you are working from the source tree, start with `run_telemetry_grapher.bat`.
 
 ## Support And Issues
 
