@@ -8,7 +8,13 @@ DualSense Haptic Translator converts Forza Horizon and Forza Motorsport UDP tele
 
 ## App Preview
 
+### Haptic Effects And Advanced Settings
+
 ![DualSense Haptic Translator 1.0 haptic effects and advanced settings](assets/app-preview-v1.0.png)
+
+### HUD Overlays In Forza Horizon
+
+![DualSense Haptic Translator 1.0 HUD overlays in Forza Horizon](assets/hud-preview-v1.0.png)
 
 ## What Version 1.0 Includes
 
