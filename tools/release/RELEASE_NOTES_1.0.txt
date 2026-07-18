@@ -1,0 +1,34 @@
+DualSense Haptic Translator 1.0 - Release Notes
+===============================================
+
+HIGHLIGHTS
+
+- Product-style PySide6 interface with separate Horizon and Motorsport profiles.
+- DualSense device selection, haptic output, adaptive triggers, and HUD overlays.
+- Three-button RPM HUD style selection: the original Classic gauge, a Modern
+  layered arc, and a 40-segment Digital Bar with current RPM, red zone,
+  learned upshift marker, gear, and speed. Digital Bar is the first-run style.
+- Forza UDP telemetry, preset shortcuts, DSX options, and Sound To Haptic.
+- Public/developer mode separation and a public package marker that disables
+  developer diagnostics and Real Output Test controls.
+- Clean first-run defaults: Select DualSense opens first, Digital Bar is the RPM
+  style, and HUD overlays remain off until enabled by the user.
+
+SETTINGS COMPATIBILITY
+
+- Existing 0.92 settings using format 1 load without a migration prompt.
+- The next normal save or normal exit backs up the 0.92 file, records app
+  version 1.0, and preserves format 1 data.
+- Unsupported older or newer settings formats are not loaded silently.
+- A malformed settings file is reported and preserved instead of being
+  overwritten automatically on exit.
+
+PUBLIC PACKAGE CONTENTS
+
+The package intentionally excludes source code, developer launchers, internal
+documents, logs, caches, build intermediates, and personal settings.
+
+OPTIONAL INTEGRATIONS
+
+DSX and Sound To Haptic require compatible external software, audio devices,
+and local configuration. They are disabled or unselected by default.

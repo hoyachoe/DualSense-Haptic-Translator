@@ -1,41 +1,45 @@
-# Python cache
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+.venv/
+venv/
 
-# PyInstaller output
-build/
-dist/
+# Generated release and PyInstaller output
+/artifacts/
+/build/
+/dist/
+/release/
 *.spec
-
-# Release output
-release/
 *.zip
 
-# .NET build output
+# .NET build and packaged runtime output
 **/bin/
 **/obj/
+dht_app/runtime/
 
-# Runtime logs and recordings
+# Local app state, logs, and recordings
+dht_app/user_data/
+user_data/
 logs/
 *.log
 *.csv
-
-# Local runtime settings
 telemetry_grapher_settings.json
 telemetry_grapher_settings.backup.json
 telemetry_grapher_settings.json.*
 
-# Local work folders
+# Private development material
+docs/internal/
+tools/developer/
+CODEX_*.md
+CODEX_*.txt
+INTERNAL_*.md
+PROJECT_NOTES.md
 _Codex_Control/
 temp data/
 
-# Development notes, keep private until cleaned for public release
-PROJECT_NOTES.md
-
-# OS/editor files
+# OS and editors
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
-INTERNAL_*.md

@@ -1,0 +1,83 @@
+{
+  "resources": [
+    "DHT_logo.svg",
+    "icon_DHT.ico",
+    "icon_dualsense_pad.svg",
+    "icon_Haptic.svg",
+    "icon_HUD.svg",
+    "icon_option.svg",
+    "icon_sound2haptic.svg",
+    "icon_Telemetry.svg",
+    "icon_Trigger.svg"
+  ],
+  "presets": [
+    "horizon/base.json",
+    "horizon/semi-strong.json",
+    "horizon/soft.json",
+    "horizon/strong.json",
+    "horizon/user_1.json",
+    "horizon/user_2.json",
+    "motorsport/base.json",
+    "motorsport/semi-strong.json",
+    "motorsport/soft.json",
+    "motorsport/strong.json",
+    "motorsport/user_1.json",
+    "motorsport/user_2.json"
+  ],
+  "output_runtime": [
+    "DualSenseOutputServer.deps.json",
+    "DualSenseOutputServer.dll",
+    "DualSenseOutputServer.exe",
+    "DualSenseOutputServer.runtimeconfig.json",
+    "NAudio.Asio.dll",
+    "NAudio.Core.dll",
+    "NAudio.dll",
+    "NAudio.Midi.dll",
+    "NAudio.Wasapi.dll",
+    "NAudio.WinForms.dll",
+    "NAudio.WinMM.dll"
+  ],
+  "sound_bridge": [
+    "DualSenseSoundToHapticBridge.deps.json",
+    "DualSenseSoundToHapticBridge.dll",
+    "DualSenseSoundToHapticBridge.exe",
+    "DualSenseSoundToHapticBridge.runtimeconfig.json",
+    "NAudio.Asio.dll",
+    "NAudio.Core.dll",
+    "NAudio.dll",
+    "NAudio.Midi.dll",
+    "NAudio.Wasapi.dll",
+    "NAudio.WinForms.dll",
+    "NAudio.WinMM.dll"
+  ],
+  "release_root_files": [
+    "DualSense Haptic Translator.exe",
+    "README_FIRST.txt",
+    "RELEASE_NOTES_1.0.txt"
+  ],
+  "release_root_directories": [
+    "_internal"
+  ],
+  "forbidden_extensions": [
+    ".py",
+    ".pyc",
+    ".pdb",
+    ".log"
+  ],
+  "forbidden_directory_names": [
+    "__pycache__",
+    "Debug",
+    "docs",
+    "obj",
+    "tools",
+    "user_data"
+  ],
+  "forbidden_file_names": [
+    "CODEX_5_6_HANDOFF.md",
+    "CODEX_5_6_START_PROMPT.txt",
+    "run_developer_mode.bat",
+    "run_real_output_test_mode.bat",
+    "telemetry_grapher_settings.json",
+    "telemetry_test_packets.py"
+  ]
+}
