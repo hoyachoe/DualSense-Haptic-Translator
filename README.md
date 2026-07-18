@@ -6,6 +6,10 @@ DualSense Haptic Translator converts Forza Horizon and Forza Motorsport UDP tele
 
 [Download the latest Windows release](https://github.com/hoyachoe/DualSense-Haptic-Translator/releases/latest)
 
+## App Preview
+
+![DualSense Haptic Translator 1.0 haptic effects and advanced settings](assets/app-preview-v1.0.png)
+
 ## What Version 1.0 Includes
 
 - Product-style PySide6 interface with separate Horizon and Motorsport profiles.
