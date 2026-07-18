@@ -118,17 +118,21 @@ class EngineBridge:
                 f"{runtime_result.details} {start_plan.details}",
                 changed=False,
             )
+        low_boost_plan = self._apply_saved_haptic_low_boost()
         haptic_test_plan = self.output_runtime.send_haptic_test_event()
         device.last_test_result = start_plan.message
         self.state.dualsense_status = (
             DualSenseStatus.CONNECTED
-            if runtime_result.ok and start_plan.ok and haptic_test_plan.ok
+            if runtime_result.ok and start_plan.ok and low_boost_plan.ok and haptic_test_plan.ok
             else DualSenseStatus.SERVER_ERROR
         )
         return BridgeResult(
             haptic_test_plan.message,
-            f"{runtime_result.details} {start_plan.details} {haptic_test_plan.details}",
-            changed=runtime_result.ok and start_plan.ok and haptic_test_plan.ok,
+            (
+                f"{runtime_result.details} {start_plan.details} "
+                f"Restored Low Boost: {low_boost_plan.details} {haptic_test_plan.details}"
+            ),
+            changed=runtime_result.ok and start_plan.ok and low_boost_plan.ok and haptic_test_plan.ok,
         )
 
     def test_and_save_dualsense(self) -> BridgeResult:
@@ -174,17 +178,21 @@ class EngineBridge:
             execute=True,
             allow_execute=True,
         )
+        if runtime_result.ok:
+            low_boost_plan = self._apply_saved_haptic_low_boost()
+            haptic_probe = self.output_runtime.send_haptic_test_event()
+            runtime_result = type(runtime_result)(
+                runtime_result.message,
+                (
+                    f"{runtime_result.details} Restored Low Boost: {low_boost_plan.details} "
+                    f"Startup haptic probe: {haptic_probe.details}"
+                ),
+                ok=runtime_result.ok and low_boost_plan.ok and haptic_probe.ok,
+            )
         self.state.dualsense_status = (
             DualSenseStatus.CONNECTED if runtime_result.ok else DualSenseStatus.SERVER_ERROR
         )
         device.last_test_result = runtime_result.message
-        if runtime_result.ok:
-            haptic_probe = self.output_runtime.send_haptic_test_event()
-            runtime_result = type(runtime_result)(
-                runtime_result.message,
-                f"{runtime_result.details} Startup haptic probe: {haptic_probe.details}",
-                ok=runtime_result.ok and haptic_probe.ok,
-            )
         return BridgeResult(
             runtime_result.message,
             runtime_result.details,
@@ -276,12 +284,21 @@ class EngineBridge:
             execute=True,
             allow_execute=True,
         )
+        low_boost_details = ""
+        if runtime_result.ok:
+            low_boost_plan = self._apply_saved_haptic_low_boost()
+            low_boost_details = f" Restored Low Boost: {low_boost_plan.details}"
+            runtime_result = type(runtime_result)(
+                runtime_result.message,
+                runtime_result.details,
+                ok=runtime_result.ok and low_boost_plan.ok,
+            )
         self.state.dualsense_status = (
             DualSenseStatus.CONNECTED if runtime_result.ok else DualSenseStatus.SERVER_ERROR
         )
         return BridgeResult(
             runtime_result.message,
-            f"{guard.details} {runtime_result.details}",
+            f"{guard.details} {runtime_result.details}{low_boost_details}",
             changed=runtime_result.ok,
         )
 
@@ -348,6 +365,11 @@ class EngineBridge:
             changed=runtime_result.ok,
         )
 
+    def _apply_saved_haptic_low_boost(self):
+        return self.output_runtime.apply_haptic_low_boost_gain(
+            self.state.options.haptic_low_boost_gain,
+        )
+
     def apply_trigger_settings(self) -> BridgeResult:
         runtime_result = self.output_runtime.prepare_trigger_profile(
             self.state.selected_game_label,
@@ -396,11 +418,21 @@ class EngineBridge:
                 execute=True,
                 allow_execute=True,
             )
+            low_boost_details = ""
+            if runtime_result.ok:
+                low_boost_plan = self._apply_saved_haptic_low_boost()
+                low_boost_details = f" Restored Low Boost: {low_boost_plan.details}"
+                runtime_result = type(runtime_result)(
+                    runtime_result.message,
+                    runtime_result.details,
+                    ok=runtime_result.ok and low_boost_plan.ok,
+                )
             return BridgeResult(
                 runtime_result.message,
                 (
                     f"DSX target: {options.dsx_host}:{options.dsx_port}; "
-                    f"audio device: {options.dsx_audio_device}. {runtime_result.details}"
+                    f"audio device: {options.dsx_audio_device}. "
+                    f"{runtime_result.details}{low_boost_details}"
                 ),
                 changed=runtime_result.ok,
             )

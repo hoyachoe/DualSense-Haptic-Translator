@@ -1,4 +1,4 @@
-# Building DualSense Haptic Translator 1.0
+# Building DualSense Haptic Translator 1.1
 
 Normal users should download the prebuilt ZIP from the GitHub Releases page. These instructions are for source review and reproducible public builds.
 
@@ -32,7 +32,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\release\build_public_r
 
 The script:
 
-1. Runs the first-run, RPM HUD, release-default, haptic, trigger, and inline-description verification gates.
+1. Runs the first-run, RPM HUD, release-default, haptic, trigger, inline-description, HUD-scale migration, and EQ Boost verification gates.
 2. Publishes the DualSense output service and builds the Sound To Haptic bridge.
 3. Packages the PySide6 application with PyInstaller.
 4. Audits the release folder against the public allowlist.

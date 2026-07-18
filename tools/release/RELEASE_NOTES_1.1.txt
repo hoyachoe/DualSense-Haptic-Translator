@@ -1,0 +1,33 @@
+DualSense Haptic Translator 1.1 - Release Notes
+===============================================
+
+FIXED IN 1.1
+
+- Main UI Scale now changes only the application interface. It no longer
+  changes the physical size or screen position of HUD overlays.
+- Existing 1.0 HUD size and position values are migrated once so the overlays
+  retain their previous on-screen appearance after upgrading.
+- Haptic EQ Boost Gain is fully available again as a 0/10 to 10/10 control on
+  the Haptic Strength row.
+- EQ Boost changes apply live while output is running, are saved with settings,
+  and are automatically restored whenever DualSense output starts or restarts.
+
+SETTINGS COMPATIBILITY
+
+- Version 1.1 keeps settings snapshot format 1.
+- Existing 1.0 and compatible 0.92 settings load normally and are backed up
+  before the app records version 1.1 on the next normal save or exit.
+- Unsupported settings formats are not loaded silently. Malformed settings are
+  reported and preserved instead of being overwritten automatically.
+
+UNCHANGED 1.0 FEATURE SET
+
+This maintenance release retains the validated PySide6 interface, separate
+Horizon and Motorsport profiles, DualSense haptics and adaptive triggers, HUD
+overlays, RPM HUD styles, preset shortcuts, DSX options, update checking, and
+Sound To Haptic integration from version 1.0.
+
+PUBLIC PACKAGE CONTENTS
+
+The package intentionally excludes source code, developer launchers, internal
+documents, logs, caches, build intermediates, and personal settings.

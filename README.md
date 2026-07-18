@@ -1,6 +1,6 @@
 # DualSense Haptic Translator
 
-**Version 1.0 is the first stable public release.**
+**Version 1.1 is the latest stable maintenance release.**
 
 DualSense Haptic Translator converts Forza Horizon and Forza Motorsport UDP telemetry into DualSense haptic audio, adaptive trigger feedback, and configurable HUD overlays on Windows.
 
@@ -16,7 +16,7 @@ DualSense Haptic Translator converts Forza Horizon and Forza Motorsport UDP tele
 
 ![DualSense Haptic Translator 1.0 HUD overlays in Forza Horizon](assets/hud-preview-v1.0.png)
 
-## What Version 1.0 Includes
+## Core Features
 
 - Product-style PySide6 interface with separate Horizon and Motorsport profiles.
 - DualSense audio-device selection, haptic output, and adaptive trigger output.
@@ -26,6 +26,13 @@ DualSense Haptic Translator converts Forza Horizon and Forza Motorsport UDP tele
 - Per-game presets with Base, Soft, Semi-Strong, Strong, and two user slots.
 - Optional DSX output, telemetry relay, preset shortcuts, and Sound To Haptic.
 - English and Spanish main UI, with Korean, Chinese, and Spanish effect descriptions.
+
+## What's New In Version 1.1
+
+- Main UI Scale now changes only the application interface. HUD overlay size and screen position remain independent.
+- Existing Version 1.0 HUD layouts are migrated once so they retain their previous on-screen appearance.
+- Haptic EQ Boost Gain is fully restored as a `0/10` to `10/10` control on the Haptic Strength row.
+- EQ Boost changes apply live, save with the app settings, and are restored automatically whenever DualSense output starts or restarts.
 
 ## Recommended Setup
 
@@ -66,13 +73,13 @@ Xbox App, Microsoft Store, or Game Pass versions may require a Windows AppContai
 - **Sound To Haptic** requires a compatible Windows audio source and output setup.
 - DS4Windows, Steam Input, reWASD, or other controller tools can conflict with device access or trigger output depending on their configuration.
 
-## Upgrading From 0.9.x
+## Upgrading From 1.0 Or 0.9.x
 
-Compatible `0.92` settings using snapshot format `1` are preserved. On the next normal save or exit, the app creates a backup and records version `1.0`. Older RPM settings without a style field continue to use Classic.
+Version 1.0 and compatible `0.92` settings using snapshot format `1` are preserved. On the next normal save or exit, the app creates a backup and records version `1.1`. Version 1.0 HUD layout values are migrated once to preserve their physical size and screen position. Older RPM settings without a style field continue to use Classic.
 
 ## Installation Video
 
-The earlier installation video still explains the basic DualSense and Forza Data Out setup. The Version 1.0 interface is newer than the interface shown in the video.
+The earlier installation video still explains the basic DualSense and Forza Data Out setup. The current PySide6 interface is newer than the interface shown in the video.
 
 [Watch the installation video on YouTube](https://youtu.be/RCV-Fzagu7k)
 

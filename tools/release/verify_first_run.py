@@ -356,7 +356,10 @@ def _verify_legacy_092_schema_1_upgrade(temp_root: Path, app: QApplication) -> N
     app.processEvents()
 
     upgraded = json.loads(settings_path.read_text(encoding="utf-8"))
-    _assert(upgraded.get("app_version") == APP_VERSION, "Compatible settings were not upgraded to app 1.0.")
+    _assert(
+        upgraded.get("app_version") == APP_VERSION,
+        f"Compatible settings were not upgraded to app {APP_VERSION}.",
+    )
     _assert(upgraded.get("schema") == SNAPSHOT_SCHEMA, "Compatible settings schema changed unexpectedly.")
     _assert(upgraded.get("udp_port") == 18888, "Compatible settings lost the restored UDP port.")
     _assert(upgraded.get("selected_preset") == "Soft", "Compatible settings lost the restored preset.")

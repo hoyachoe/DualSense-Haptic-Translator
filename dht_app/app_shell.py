@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSlider,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -51,7 +52,7 @@ from .settings_store import (
 )
 from .telemetry_receiver import TelemetryReceiver
 from .dualsense_input_receiver import DualSenseInputReceiver
-from .ui_widgets import CompactScrollArea, TitleBar
+from .ui_widgets import CompactScrollArea, NoWheelSlider, TitleBar
 from .ui_texts import ui_code_text, ui_text
 from .update_checker import check_latest_release
 from .layout_shell import (
@@ -207,7 +208,7 @@ class MainWindow(QMainWindow):
     NORMAL_HUD_NAMES = frozenset(("Tire", "Haptic Viz", "Drift"))
     DEBUG_HUD_NAMES = frozenset(("Debug Haptic", "Debug Trigger"))
 
-    def __init__(self):
+    def __init__(self, startup_main_ui_scale: int = 100):
         super().__init__()
         self.setWindowTitle(APP_TITLE)
         icon_path = Path(__file__).resolve().parent / "Resource" / "icon_DHT.ico"
@@ -217,6 +218,7 @@ class MainWindow(QMainWindow):
         self.resize(836, 640)
         self.setMinimumSize(790, 544)
         self.state = AppState()
+        self.state.startup_main_ui_scale = _normalize_main_ui_scale(startup_main_ui_scale)
         self._builtin_preset_report = load_builtin_presets_into_state(self.state)
         self._pending_settings_notice = None
         self._settings_load_failed = False
@@ -796,8 +798,9 @@ class MainWindow(QMainWindow):
             item = self.state.hud.items.get(overlay.HUD_NAME)
             if item is None or not overlay.isVisible():
                 continue
-            x = overlay.x()
-            y = overlay.y()
+            position = overlay.canonical_position()
+            x = position.x()
+            y = position.y()
             if item.x == x and item.y == y:
                 continue
             if item.x is None and item.y is None and x == overlay.DEFAULT_X and y == overlay.DEFAULT_Y:
@@ -1921,7 +1924,7 @@ class MainWindow(QMainWindow):
 
     def _haptic_callbacks(self):
         callbacks = {
-            "eq_boost_gain": lambda checked=False: self._apply_haptic_low_boost_gain(),
+            "eq_boost_gain": lambda checked=False: self._show_haptic_low_boost_dialog(),
         }
         effects = [
             "Gear Shift Bite - Core",
@@ -1976,10 +1979,201 @@ class MainWindow(QMainWindow):
         self._apply_bridge_result(self.engine.apply_haptic_settings())
         self.refresh_shell_state()
 
-    def _apply_haptic_low_boost_gain(self):
+    def _show_haptic_low_boost_dialog(self):
+        language = self.state.options.tooltip_language
+        copy = {
+            "KR": {
+                "title": "햅틱 로우 부스트 게인",
+                "description": (
+                    "DualSense 오디오 채널로 보내기 전, 최종 햅틱 파형 중 작은 신호를 증폭합니다. "
+                    "햅틱 믹스가 끝난 뒤 적용되며 출력 서버 실행 중에도 즉시 반영됩니다."
+                ),
+                "gain": "게인",
+                "caution": "주의: 최종 출력 보정이며 개별 이펙트의 볼륨 조절이 아닙니다. 낮은 값부터 사용하세요.",
+                "apply": "적용",
+                "close": "닫기",
+                "off": "OFF",
+                "ready": "현재 선택: {value} / 적용 전",
+                "live": "실시간 적용됨: {value}/10",
+                "saved": "저장됨: {value}/10 / 출력 서버 시작 시 자동 적용",
+                "save_failed": "현재 세션에 적용했지만 설정 저장에 실패했습니다.",
+                "apply_failed": "설정은 저장됐지만 실행 중인 출력 서버로 전송하지 못했습니다.",
+            },
+            "CN": {
+                "title": "触觉低电平增强增益",
+                "description": (
+                    "在最终触觉波形发送到 DualSense 音频通道前放大较弱的信号。"
+                    "它在触觉混合完成后生效，并可在输出服务器运行时实时应用。"
+                ),
+                "gain": "增益",
+                "caution": "注意：这是最终输出增强，不是单个效果的音量控制。请从低值开始。",
+                "apply": "应用",
+                "close": "关闭",
+                "off": "OFF",
+                "ready": "当前选择：{value} / 尚未应用",
+                "live": "已实时应用：{value}/10",
+                "saved": "已保存：{value}/10 / 输出服务器启动时自动应用",
+                "save_failed": "已应用到当前会话，但设置保存失败。",
+                "apply_failed": "设置已保存，但无法发送到正在运行的输出服务器。",
+            },
+            "ES": {
+                "title": "Ganancia Low Boost háptica",
+                "description": (
+                    "Amplifica las señales más débiles de la mezcla háptica final antes de enviarlas "
+                    "a los canales de audio del DualSense. Se aplica en vivo mientras el servidor está activo."
+                ),
+                "gain": "Ganancia",
+                "caution": "ATENCIÓN: es un realce de salida final, no un volumen de efecto. Empieza con valores bajos.",
+                "apply": "Aplicar",
+                "close": "Cerrar",
+                "off": "OFF",
+                "ready": "Selección actual: {value} / sin aplicar",
+                "live": "Aplicado en vivo: {value}/10",
+                "saved": "Guardado: {value}/10 / se aplicará al iniciar el servidor",
+                "save_failed": "Aplicado en esta sesión, pero no se pudo guardar.",
+                "apply_failed": "Guardado, pero no se pudo enviar al servidor activo.",
+            },
+            "EN": {
+                "title": "Haptic Low Boost Gain",
+                "description": (
+                    "Boosts quieter final haptic waveforms before they are sent to the DualSense audio channels. "
+                    "It works after the haptic mix and applies live while the output server is running."
+                ),
+                "gain": "Gain",
+                "caution": "CAUTION: This is a final-output enhancer, not an effect volume control. Start with low values.",
+                "apply": "Apply",
+                "close": "Close",
+                "off": "OFF",
+                "ready": "Current selection: {value} / not applied",
+                "live": "Live applied: {value}/10",
+                "saved": "Saved: {value}/10 / applies automatically when the server starts",
+                "save_failed": "Applied for this session, but the setting could not be saved.",
+                "apply_failed": "Saved, but it could not be sent to the running output server.",
+            },
+        }.get(language, {})
+        if not copy:
+            copy = {
+                "title": "Haptic Low Boost Gain",
+                "description": "Boosts quieter final haptic waveforms after the haptic mix.",
+                "gain": "Gain",
+                "caution": "CAUTION: This is a final-output enhancer. Start with low values.",
+                "apply": "Apply",
+                "close": "Close",
+                "off": "OFF",
+                "ready": "Current selection: {value} / not applied",
+                "live": "Live applied: {value}/10",
+                "saved": "Saved: {value}/10 / applies automatically when the server starts",
+                "save_failed": "Applied for this session, but the setting could not be saved.",
+                "apply_failed": "Saved, but it could not be sent to the running output server.",
+            }
+
+        dialog = QDialog(self)
+        dialog.setObjectName("HapticEqDialog")
+        dialog.setAttribute(Qt.WA_StyledBackground, True)
+        dialog.setWindowTitle(copy["title"])
+        dialog.setModal(True)
+        dialog.setMinimumWidth(520)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(11)
+
+        title = QLabel(copy["title"])
+        title.setObjectName("PanelTitle")
+        layout.addWidget(title)
+
+        description = QLabel(copy["description"])
+        description.setObjectName("OptionText")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+
+        gain_label = QLabel(copy["gain"])
+        gain_label.setObjectName("OptionLabel")
+        layout.addWidget(gain_label)
+
+        slider_row = QHBoxLayout()
+        slider_row.setSpacing(10)
+        slider = NoWheelSlider(Qt.Horizontal)
+        slider.setRange(0, 10)
+        slider.setSingleStep(1)
+        slider.setPageStep(1)
+        slider.setTickInterval(1)
+        slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        slider.setValue(max(0, min(10, int(self.state.options.haptic_low_boost_gain))))
+        slider.setMinimumWidth(330)
+        value_label = QLabel()
+        value_label.setObjectName("DetailValueBadge")
+        value_label.setAlignment(Qt.AlignCenter)
+        value_label.setFixedWidth(52)
+        slider_row.addWidget(slider, 1)
+        slider_row.addWidget(value_label)
+        layout.addLayout(slider_row)
+
+        caution = QLabel(copy["caution"])
+        caution.setWordWrap(True)
+        caution.setStyleSheet("color: #ffd21a; font-size: 9px; font-weight: 800;")
+        layout.addWidget(caution)
+
+        status = QLabel()
+        status.setObjectName("OptionText")
+        status.setWordWrap(True)
+        layout.addWidget(status)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        close_button = QPushButton(copy["close"])
+        close_button.setObjectName("SecondaryButton")
+        apply_button = QPushButton(copy["apply"])
+        apply_button.setObjectName("PrimaryButton")
+        close_button.clicked.connect(dialog.reject)
+        buttons.addWidget(close_button)
+        buttons.addWidget(apply_button)
+        layout.addLayout(buttons)
+
+        applied_once = False
+
+        def display_value(value: int) -> str:
+            return copy["off"] if value <= 0 else f"{value}/10"
+
+        def update_preview(value: int) -> None:
+            value_label.setText(display_value(value))
+            status.setText(copy["ready"].format(value=display_value(value)))
+
+        def apply_gain() -> None:
+            nonlocal applied_once
+            gain = max(0, min(10, int(slider.value())))
+            self.state.set_haptic_low_boost_gain(gain)
+            saved = self._save_current_settings(
+                "Haptic Low Boost Gain saved",
+                f"Gain: {gain}/10.",
+            )
+            result = self._apply_haptic_low_boost_gain()
+            service_running = self.engine.output_runtime.process_manager.running
+            if not saved:
+                status.setText(copy["save_failed"])
+            elif service_running and result.changed:
+                status.setText(copy["live"].format(value=gain))
+            elif service_running:
+                status.setText(copy["apply_failed"])
+            else:
+                status.setText(copy["saved"].format(value=gain))
+            applied_once = True
+            self.refresh_shell_state()
+
+        slider.valueChanged.connect(update_preview)
+        apply_button.clicked.connect(apply_gain)
+        update_preview(slider.value())
+        dialog.exec()
+        if applied_once:
+            self._render_content()
+            self.refresh_shell_state()
+
+    def _apply_haptic_low_boost_gain(self) -> BridgeResult:
         self.state.apply_haptic_low_boost_gain()
-        self._apply_bridge_result(self.engine.apply_haptic_low_boost_gain())
+        result = self.engine.apply_haptic_low_boost_gain()
+        self._apply_bridge_result(result)
         self.refresh_shell_state()
+        return result
 
     def _set_haptic_effect_value(self, name: str, value: int):
         self.state.set_haptic_effect_value(name, value)
@@ -2078,11 +2272,11 @@ class MainWindow(QMainWindow):
         self.refresh_shell_state()
 
 def main() -> int:
-    _apply_startup_main_ui_scale()
+    startup_main_ui_scale = _apply_startup_main_ui_scale()
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setStyleSheet(stylesheet())
-    window = MainWindow()
+    window = MainWindow(startup_main_ui_scale)
     window.show()
     return app.exec()
 

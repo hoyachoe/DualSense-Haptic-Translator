@@ -244,6 +244,10 @@ def stylesheet() -> str:
         background: {COLORS["surface"]};
     }}
 
+    QDialog#HapticEqDialog {{
+        background: {COLORS["surface"]};
+    }}
+
     QDialog#SettingsRecoveryDialog {{
         background: {COLORS["surface"]};
     }}

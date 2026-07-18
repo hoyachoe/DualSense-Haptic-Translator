@@ -10,6 +10,11 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
 from .app_state import AppState, HAPTIC_DEBUG_EFFECT_NAMES, PacketStatus, TRIGGER_DEBUG_EFFECT_NAMES
+from .hud_geometry import (
+    hud_canonical_value,
+    hud_logical_value,
+    normalized_main_ui_scale_factor,
+)
 from .ui_theme import COLORS
 
 
@@ -24,6 +29,9 @@ class HudOverlayBase(QWidget):
     def __init__(self, state: AppState, title: str):
         super().__init__(None)
         self.state = state
+        self._main_ui_scale_factor = normalized_main_ui_scale_factor(
+            state.startup_main_ui_scale
+        )
         self._drag_origin: QPoint | None = None
         self._geometry_signature: tuple[int, int, int, int, int] | None = None
         self.setWindowTitle(title)
@@ -77,14 +85,14 @@ class HudOverlayBase(QWidget):
         opacity_percent = max(10, min(100, int(item.opacity if item is not None else 100)))
         opacity = opacity_percent / 100.0
         base_width, base_height = self._base_size()
-        width = round(base_width * scale)
-        height = round(base_height * scale)
+        width = hud_logical_value(base_width * scale, self._main_ui_scale_factor)
+        height = hud_logical_value(base_height * scale, self._main_ui_scale_factor)
         if item is not None and item.x is not None and item.y is not None:
-            x = item.x
-            y = item.y
+            x = hud_logical_value(item.x, self._main_ui_scale_factor)
+            y = hud_logical_value(item.y, self._main_ui_scale_factor)
         else:
-            x = self.DEFAULT_X
-            y = self.DEFAULT_Y
+            x = hud_logical_value(self.DEFAULT_X, self._main_ui_scale_factor)
+            y = hud_logical_value(self.DEFAULT_Y, self._main_ui_scale_factor)
         if self._drag_origin is not None:
             x = self.x()
             y = self.y()
@@ -118,9 +126,17 @@ class HudOverlayBase(QWidget):
         snapped = self._snapped_position(QPoint(self.x(), self.y()))
         if snapped != QPoint(self.x(), self.y()):
             self.move(snapped)
-        self.state.set_hud_position(self.HUD_NAME, self.x(), self.y())
+        position = self.canonical_position()
+        self.state.set_hud_position(self.HUD_NAME, position.x(), position.y())
         self._geometry_signature = None
         super().mouseReleaseEvent(event)
+
+    def canonical_position(self) -> QPoint:
+        """Return the current position in persistent 100%-UI coordinates."""
+        return QPoint(
+            hud_canonical_value(self.x(), self._main_ui_scale_factor),
+            hud_canonical_value(self.y(), self._main_ui_scale_factor),
+        )
 
     def _snapped_position(self, position: QPoint) -> QPoint:
         hud = self.state.hud
@@ -129,9 +145,11 @@ class HudOverlayBase(QWidget):
         snap = max(1, int(hud.snap_pixel))
         if snap <= 1:
             return position
+        canonical_x = hud_canonical_value(position.x(), self._main_ui_scale_factor)
+        canonical_y = hud_canonical_value(position.y(), self._main_ui_scale_factor)
         return QPoint(
-            round(position.x() / snap) * snap,
-            round(position.y() / snap) * snap,
+            hud_logical_value(round(canonical_x / snap) * snap, self._main_ui_scale_factor),
+            hud_logical_value(round(canonical_y / snap) * snap, self._main_ui_scale_factor),
         )
 
 

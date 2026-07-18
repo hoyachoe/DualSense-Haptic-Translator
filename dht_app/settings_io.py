@@ -22,6 +22,7 @@ from .version import APP_VERSION
 
 
 SNAPSHOT_SCHEMA = 1
+HUD_LAYOUT_VERSION = 2
 USER_PRESET_NAMES = ("User 1", "User 2")
 
 
@@ -95,6 +96,7 @@ def _export_window(state: AppState) -> dict[str, Any]:
 
 def _export_hud(state: AppState) -> dict[str, Any]:
     return {
+        "layout_version": HUD_LAYOUT_VERSION,
         "standby_hide": bool(state.hud.standby_hide),
         "snap_enabled": bool(state.hud.snap_enabled),
         "snap_pixel": int(state.hud.snap_pixel),
@@ -462,6 +464,12 @@ def _apply_hud(state: AppState, source: Any) -> list[str]:
     if not isinstance(source, dict):
         return restored
     hud = state.hud
+    try:
+        layout_version = int(source.get("layout_version", 1))
+    except (TypeError, ValueError):
+        layout_version = 1
+    legacy_layout = layout_version < HUD_LAYOUT_VERSION
+    legacy_ui_factor = max(0.01, int(state.options.main_ui_scale) / 100.0)
 
     for key in ("standby_hide", "snap_enabled"):
         if key in source:
@@ -504,7 +512,10 @@ def _apply_hud(state: AppState, source: Any) -> list[str]:
                 item.enabled = bool(payload["enabled"])
             if "scale" in payload:
                 try:
-                    item.scale = max(50, min(200, int(payload["scale"])))
+                    scale = int(payload["scale"])
+                    if legacy_layout:
+                        scale = round(scale * legacy_ui_factor)
+                    item.scale = max(50, min(200, scale))
                 except (TypeError, ValueError):
                     pass
             if "opacity" in payload:
@@ -514,15 +525,25 @@ def _apply_hud(state: AppState, source: Any) -> list[str]:
                     pass
             if "x" in payload and payload["x"] is not None:
                 try:
-                    item.x = max(-4000, min(8000, int(payload["x"])))
+                    x = int(payload["x"])
+                    if legacy_layout:
+                        x = round(x * legacy_ui_factor)
+                    item.x = max(-8000, min(16000, x))
                 except (TypeError, ValueError):
                     pass
             if "y" in payload and payload["y"] is not None:
                 try:
-                    item.y = max(-4000, min(8000, int(payload["y"])))
+                    y = int(payload["y"])
+                    if legacy_layout:
+                        y = round(y * legacy_ui_factor)
+                    item.y = max(-8000, min(16000, y))
                 except (TypeError, ValueError):
                     pass
             restored.append(f"hud.items.{name}")
+    if legacy_layout:
+        restored.append("hud.layout_version.migrated")
+    else:
+        restored.append("hud.layout_version")
     return restored
 
 

@@ -1,4 +1,4 @@
-DualSense Haptic Translator 1.0
+DualSense Haptic Translator 1.1
 ===============================
 
 QUICK START
@@ -22,11 +22,21 @@ HUD
 
 - Use the three RPM Style buttons in the HUD Units card to select Classic,
   Modern, or Digital Bar directly. Digital Bar is the first-run default.
+- Main UI Scale changes only the app interface. HUD size and screen position
+  remain independent, and existing 1.0 HUD layouts are converted automatically
+  the first time they are opened in 1.1.
 - Modern shows current RPM in white, the red zone in dark magenta, and the
   learned previous upshift point as a red marker.
 - Digital Bar shows the same layers as 40 horizontal segments, with gear on
   the left and speed on the right.
 - Its speed readout follows the global HUD speed unit setting.
+
+HAPTIC EQ BOOST
+
+- Use EQ BOOST GAIN on the Haptic Strength row to set low-frequency boost from
+  0/10 to 10/10.
+- The value is saved and is applied again automatically whenever DualSense
+  output starts or restarts.
 
 USER DATA
 

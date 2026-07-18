@@ -1694,6 +1694,10 @@ class AppState:
             GameMode.MOTORSPORT: GameProfileState(),
         }
     )
+    # Runtime-only scale used to cancel the process-wide Qt scale for HUD windows.
+    # This deliberately remains separate from the mutable saved option so changing
+    # Main UI Scale cannot resize HUDs before the required app restart.
+    startup_main_ui_scale: int = field(default=100, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.normalize_trigger_brake_exclusivity(prefer=self.selected_trigger_effect)

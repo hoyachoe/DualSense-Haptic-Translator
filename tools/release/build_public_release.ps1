@@ -6,9 +6,9 @@ Set-StrictMode -Version Latest
 
 $appName = "DualSense Haptic Translator"
 $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
+$appVersionSource = Join-Path $projectRoot "dht_app\version.py"
 $allowlistPath = Join-Path $PSScriptRoot "release_allowlist.json"
 $readmeSource = Join-Path $PSScriptRoot "README_FIRST.txt"
-$releaseNotesSource = Join-Path $PSScriptRoot "RELEASE_NOTES_1.0.txt"
 $versionInfoSource = Join-Path $PSScriptRoot "windows_version_info.txt"
 $firstRunVerifier = Join-Path $PSScriptRoot "verify_first_run.py"
 $rpmHudVerifier = Join-Path $PSScriptRoot "verify_rpm_hud.py"
@@ -16,6 +16,8 @@ $releaseDefaultsVerifier = Join-Path $PSScriptRoot "verify_release_defaults.py"
 $hapticParityVerifier = Join-Path $PSScriptRoot "verify_haptic_legacy_parity.py"
 $triggerReleaseVerifier = Join-Path $PSScriptRoot "verify_trigger_release_fixes.py"
 $inlineDescriptionsVerifier = Join-Path $PSScriptRoot "verify_inline_descriptions.py"
+$hudUiScaleVerifier = Join-Path $PSScriptRoot "verify_hud_ui_scale_independence.py"
+$hapticEqBoostVerifier = Join-Path $PSScriptRoot "verify_haptic_eq_boost.py"
 $artifactsRoot = Join-Path $projectRoot "artifacts"
 $assetRoot = Join-Path $artifactsRoot "public_assets"
 $buildRoot = Join-Path $artifactsRoot "public_build"
@@ -23,7 +25,6 @@ $distRoot = Join-Path $artifactsRoot "public_release"
 $specRoot = Join-Path $artifactsRoot "public_spec"
 $outputPublishRoot = Join-Path $artifactsRoot "output_runtime"
 $releaseRoot = Join-Path $distRoot $appName
-$archivePath = Join-Path $distRoot "$appName 1.0.zip"
 
 function Assert-FileExists {
     param([Parameter(Mandatory)][string]$LiteralPath)
@@ -92,6 +93,17 @@ function Assert-ExactRelativeFiles {
     }
 }
 
+Assert-FileExists $appVersionSource
+$appVersionText = Get-Content -LiteralPath $appVersionSource -Raw
+$appVersionMatch = [regex]::Match($appVersionText, '(?m)^APP_VERSION\s*=\s*"([^"]+)"\s*$')
+if (-not $appVersionMatch.Success) {
+    throw "Could not read APP_VERSION from $appVersionSource"
+}
+$releaseVersion = $appVersionMatch.Groups[1].Value
+$releaseNotesFileName = "RELEASE_NOTES_$releaseVersion.txt"
+$releaseNotesSource = Join-Path $PSScriptRoot $releaseNotesFileName
+$archivePath = Join-Path $distRoot "$appName $releaseVersion.zip"
+
 Assert-FileExists $allowlistPath
 Assert-FileExists $readmeSource
 Assert-FileExists $releaseNotesSource
@@ -102,7 +114,13 @@ Assert-FileExists $releaseDefaultsVerifier
 Assert-FileExists $hapticParityVerifier
 Assert-FileExists $triggerReleaseVerifier
 Assert-FileExists $inlineDescriptionsVerifier
+Assert-FileExists $hudUiScaleVerifier
+Assert-FileExists $hapticEqBoostVerifier
 $allowlist = Get-Content -LiteralPath $allowlistPath -Raw | ConvertFrom-Json
+
+if ($allowlist.release_root_files -notcontains $releaseNotesFileName) {
+    throw "Release allowlist does not include $releaseNotesFileName"
+}
 
 foreach ($verifier in @(
     $firstRunVerifier,
@@ -110,7 +128,9 @@ foreach ($verifier in @(
     $releaseDefaultsVerifier,
     $hapticParityVerifier,
     $triggerReleaseVerifier,
-    $inlineDescriptionsVerifier
+    $inlineDescriptionsVerifier,
+    $hudUiScaleVerifier,
+    $hapticEqBoostVerifier
 )) {
     & py -3.10 -B $verifier
     if ($LASTEXITCODE -ne 0) {
@@ -184,10 +204,11 @@ if ($LASTEXITCODE -ne 0) {
 
 Assert-FileExists (Join-Path $releaseRoot "$appName.exe")
 Copy-Item -LiteralPath $readmeSource -Destination (Join-Path $releaseRoot "README_FIRST.txt") -Force
-Copy-Item -LiteralPath $releaseNotesSource -Destination (Join-Path $releaseRoot "RELEASE_NOTES_1.0.txt") -Force
+Copy-Item -LiteralPath $releaseNotesSource -Destination (Join-Path $releaseRoot $releaseNotesFileName) -Force
 
 $executableInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $releaseRoot "$appName.exe"))
-if (-not $executableInfo.FileVersion.StartsWith("1.0") -or -not $executableInfo.ProductVersion.StartsWith("1.0")) {
+$expectedFileVersion = "$releaseVersion.0.0"
+if ($executableInfo.FileVersion -ne $expectedFileVersion -or $executableInfo.ProductVersion -ne $releaseVersion) {
     throw "Executable version metadata is incorrect: file=$($executableInfo.FileVersion), product=$($executableInfo.ProductVersion)"
 }
 

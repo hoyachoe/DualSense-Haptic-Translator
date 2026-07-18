@@ -53,18 +53,21 @@ def build_haptic_panel(callbacks: HapticCallbacks | None = None, state: AppState
     title.setObjectName("PanelTitle")
     header.addWidget(title)
     header.addStretch(1)
+    layout.addLayout(header)
+
+    strength_header = QHBoxLayout()
+    selected = QLabel(ui_text("Haptic Strength", ui_language))
+    selected.setStyleSheet(f"color: {COLORS['text']}; font-size: 11px; font-weight: 900;")
+    strength_header.addWidget(selected, 0, Qt.AlignVCenter)
+    strength_header.addStretch(1)
     gain = state.options.haptic_low_boost_gain if state is not None else 0
     eq = QPushButton(f"EQ BOOST GAIN {gain}/10")
     eq.setObjectName("PrimaryButton")
     eq.setToolTip(action_tooltip("eq_boost_gain", language))
     _connect_callback(eq, callbacks, "eq_boost_gain")
-    header.addWidget(eq)
-    header.addSpacing(22)
-    layout.addLayout(header)
-
-    selected = QLabel(ui_text("Haptic Strength", ui_language))
-    selected.setStyleSheet(f"color: {COLORS['text']}; font-size: 11px; font-weight: 900;")
-    layout.addWidget(selected)
+    strength_header.addWidget(eq, 0, Qt.AlignVCenter)
+    strength_header.addSpacing(22)
+    layout.addLayout(strength_header)
 
     scroll = CompactScrollArea()
     scroll.setObjectName("PanelScroll")

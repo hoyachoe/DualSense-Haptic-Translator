@@ -1,6 +1,6 @@
 # Support Policy
 
-This is a personal source-available project. Version 1.0 is the first stable public release, but support and compatibility on every system are not guaranteed.
+This is a personal source-available project. Version 1.1 is the current stable release, but support and compatibility on every system are not guaranteed.
 
 Constructive bug reports and technical feedback are welcome. Abusive, threatening, insulting, or hostile comments may be ignored, deleted, or reported.
 
