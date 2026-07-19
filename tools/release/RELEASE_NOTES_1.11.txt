@@ -1,0 +1,39 @@
+DualSense Haptic Translator 1.11 - Release Notes
+================================================
+
+FIXED IN 1.11
+
+- HUD Standby Hide now recognizes the Forza Horizon garage. Horizon keeps
+  IsRaceOn, the loaded vehicle, idle RPM, and first gear active in the garage,
+  so the previous menu-oriented check incorrectly kept overlays visible.
+- Garage detection now confirms the combined game-applied handbrake, stopped
+  wheels, and inactive surface simulation state across multiple packets.
+- Moving handbrake use immediately remains active driving, preventing ordinary
+  e-brake turns from being mistaken for the garage.
+- Existing menu hiding, telemetry waiting behavior, individual HUD ON/OFF
+  controls, and the Standby Hide OFF state remain unchanged.
+- Predictive Brake Resistance no longer removes all L2 resistance when the
+  handbrake is used. It now suspends handbrake-contaminated slip prediction and
+  pulse modulation while retaining the configured base L2 force and wall.
+- Releasing the handbrake resumes predictive brake behavior automatically.
+  Basic Brake Resistance remains unchanged.
+
+SETTINGS COMPATIBILITY
+
+- Version 1.11 keeps settings snapshot format 1.
+- Existing 1.1, 1.0, and compatible 0.92 settings load normally and are backed
+  up before the app records version 1.11 on the next normal save or exit.
+- Unsupported settings formats are not loaded silently. Malformed settings are
+  reported and preserved instead of being overwritten automatically.
+
+UNCHANGED 1.1 FEATURE SET
+
+This patch retains the validated PySide6 interface, independent HUD scaling,
+Haptic EQ Boost Gain, separate Horizon and Motorsport profiles, DualSense
+haptics and adaptive triggers, HUD overlays, RPM HUD styles, preset shortcuts,
+DSX options, update checking, and Sound To Haptic integration from version 1.1.
+
+PUBLIC PACKAGE CONTENTS
+
+The package intentionally excludes source code, developer launchers, internal
+documents, logs, caches, build intermediates, and personal settings.

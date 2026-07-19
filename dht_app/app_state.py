@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import math
 from time import monotonic
+from typing import ClassVar
 
 from .settings_model import (
     HAPTIC_ADVANCED_DEFAULTS,
@@ -620,6 +621,7 @@ class DriftHudState:
 
 @dataclass
 class TelemetryState:
+    HUD_GARAGE_CONFIRM_PACKETS: ClassVar[int] = 12
     HISTORY_LIMIT: int = 144
     cards: list[TelemetryCardState] = field(
         default_factory=lambda: [
@@ -709,6 +711,7 @@ class TelemetryState:
     rpm_hud_previous_car_ordinal: int = 0
     rpm_hud_previous_gear: int | None = None
     rpm_hud_previous_rpm: float = 0.0
+    hud_garage_candidate_packets: int = 0
     engine_hud_boost_peak_by_car: dict[int, float] = field(default_factory=dict)
     engine_hud_boost_display_by_car: dict[int, float] = field(default_factory=dict)
     engine_hud_power_peak_by_car: dict[int, float] = field(default_factory=dict)
@@ -730,6 +733,75 @@ class TelemetryState:
         return (
             f"{self.last_parser_name}: {speed}, rpm {rpm}/{max_rpm}, "
             f"gear {gear}, throttle {throttle}, brake {brake}"
+        )
+
+    @staticmethod
+    def _finite_magnitude_within(value: float | None, limit: float) -> bool:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return False
+        return math.isfinite(number) and abs(number) <= limit
+
+    def _looks_like_horizon_garage_standby(self) -> bool:
+        """Identify Horizon garage packets without treating a driving handbrake as standby."""
+        if (
+            self.last_parser_name != "Forza Horizon Dash"
+            or not self.last_parsed
+            or not bool(self.last_is_race_on)
+            or not self._finite_magnitude_within(self.last_speed, 0.5)
+        ):
+            return False
+
+        try:
+            handbrake = float(self.last_handbrake)
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(handbrake) or handbrake < 254.0:
+            return False
+
+        # Horizon keeps IsRaceOn and the loaded car active in the garage. Captured
+        # garage packets instead have a full game-applied handbrake, no wheel
+        # motion, and no surface simulation. Requiring the complete signature
+        # avoids hiding during ordinary e-brake turns or while the car is moving.
+        wheel_speeds = (
+            self.last_wheel_rotation_speed_fl,
+            self.last_wheel_rotation_speed_fr,
+            self.last_wheel_rotation_speed_rl,
+            self.last_wheel_rotation_speed_rr,
+        )
+        surface_rumble = (
+            self.last_surface_rumble_fl,
+            self.last_surface_rumble_fr,
+            self.last_surface_rumble_rl,
+            self.last_surface_rumble_rr,
+        )
+        return all(
+            self._finite_magnitude_within(value, 0.05) for value in wheel_speeds
+        ) and all(
+            self._finite_magnitude_within(value, 0.001) for value in surface_rumble
+        )
+
+    def _update_hud_garage_standby_state(self) -> None:
+        if self._looks_like_horizon_garage_standby():
+            self.hud_garage_candidate_packets = min(
+                self.HUD_GARAGE_CONFIRM_PACKETS,
+                self.hud_garage_candidate_packets + 1,
+            )
+        else:
+            self.hud_garage_candidate_packets = 0
+
+    def has_active_hud_telemetry(self) -> bool:
+        try:
+            max_rpm = float(self.last_max_rpm or 0.0)
+        except (TypeError, ValueError):
+            max_rpm = 0.0
+        return (
+            self.last_parsed
+            and bool(self.last_is_race_on)
+            and math.isfinite(max_rpm)
+            and max_rpm > 0.0
+            and self.hud_garage_candidate_packets < self.HUD_GARAGE_CONFIRM_PACKETS
         )
 
     def record_frame(self, frame) -> None:
@@ -797,6 +869,7 @@ class TelemetryState:
         self.last_smashable_vel_diff = frame.smashable_vel_diff
         self.last_smashable_mass = frame.smashable_mass
         self.last_note = frame.source_note
+        self._update_hud_garage_standby_state()
         if self.last_parsed:
             self._record_rpm_hud_shift_guide()
             self.update_drift_hud_state(monotonic())

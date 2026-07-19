@@ -1,5 +1,5 @@
-DualSense Haptic Translator 1.1
-===============================
+DualSense Haptic Translator 1.11
+================================
 
 QUICK START
 
@@ -24,7 +24,9 @@ HUD
   Modern, or Digital Bar directly. Digital Bar is the first-run default.
 - Main UI Scale changes only the app interface. HUD size and screen position
   remain independent, and existing 1.0 HUD layouts are converted automatically
-  the first time they are opened in 1.1.
+  the first time they are opened in 1.1 or later.
+- Standby Hide now hides overlays in the Forza Horizon garage as well as menus.
+  Moving handbrake use remains recognized as active driving.
 - Modern shows current RPM in white, the red zone in dark magenta, and the
   learned previous upshift point as a red marker.
 - Digital Bar shows the same layers as 40 horizontal segments, with gear on
@@ -37,6 +39,12 @@ HAPTIC EQ BOOST
   0/10 to 10/10.
 - The value is saved and is applied again automatically whenever DualSense
   output starts or restarts.
+
+PREDICTIVE BRAKE RESISTANCE
+
+- Using the handbrake suspends predictive slip and pulse modulation but keeps
+  the configured base L2 resistance wall. Releasing the handbrake resumes the
+  predictive response automatically.
 
 USER DATA
 

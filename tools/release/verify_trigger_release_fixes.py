@@ -173,6 +173,82 @@ def verify_l2_exclusivity(state: AppState) -> None:
     )
 
 
+def verify_predictive_handbrake_base_resistance(state: AppState) -> None:
+    predictive_name = "Brake Resistance - Predictive"
+    settings = _only_trigger_effect(state.trigger_effects, predictive_name, 10)
+    setting = settings[predictive_name]
+    details = setting.details or {}
+    base_wall = trigger_module._detail_int(details, "start_percent", 40, 40, 100)
+    expected_start = trigger_module._wall_position_percent_to_start_byte(float(base_wall))
+    expected_force = round(
+        255.0 * trigger_module._detail_int(details, "force_percent", 70, 0, 100) / 100.0
+    )
+
+    high_slip_frame = _frame(
+        brake=180.0,
+        handbrake=0.0,
+        tire_slip_ratio_fl=1.5,
+        tire_slip_ratio_fr=1.5,
+        tire_combined_slip_fl=1.5,
+        tire_combined_slip_fr=1.5,
+    )
+    engine = TriggerEffectEngine()
+    baseline = engine.process_frame(high_slip_frame, settings)
+    _assert(baseline, "Predictive brake baseline payload was missing.")
+
+    handbrake = engine.process_frame(
+        _frame(
+            brake=180.0,
+            handbrake=255.0,
+            tire_slip_ratio_fl=2.0,
+            tire_slip_ratio_fr=2.0,
+            tire_combined_slip_fl=2.0,
+            tire_combined_slip_fr=2.0,
+        ),
+        settings,
+    )
+    _assert(handbrake, "Predictive brake handbrake payload was missing.")
+    fields = _payload_output_fields(handbrake[0])
+    _assert(
+        int(fields["force"]) == expected_force,
+        f"Handbrake did not retain predictive base force: {fields}",
+    )
+    _assert(
+        int(fields.get("start", -1)) == expected_start,
+        f"Handbrake did not retain predictive base wall: {fields}",
+    )
+    for key in ("pulse", "pulseRate", "vibrateAmp", "vibrateFreq", "vibrateStartZone"):
+        _assert(int(fields[key]) == 0, f"Handbrake left predictive modulation active: {fields}")
+    _assert(
+        engine.brake_predictive_state.wall_start_percent == float(base_wall),
+        "Handbrake did not reset predictive state to the configured base wall.",
+    )
+
+    resumed = engine.process_frame(_frame(brake=180.0, handbrake=0.0), settings)
+    _assert(
+        resumed and int(_payload_output_fields(resumed[0])["force"]) > 0,
+        "Predictive brake did not resume after releasing the handbrake.",
+    )
+
+    basic_name = "Brake Resistance"
+    basic_settings = _only_trigger_effect(state.trigger_effects, basic_name, 10)
+    normal_basic = TriggerEffectEngine().process_frame(
+        _frame(brake=180.0, handbrake=0.0),
+        basic_settings,
+    )
+    handbrake_basic = TriggerEffectEngine().process_frame(
+        _frame(brake=180.0, handbrake=255.0),
+        basic_settings,
+    )
+    _assert(
+        normal_basic
+        and handbrake_basic
+        and _payload_output_fields(normal_basic[0])["force"]
+        == _payload_output_fields(handbrake_basic[0])["force"],
+        "Basic Brake Resistance changed during the predictive handbrake fix.",
+    )
+
+
 def verify_haptic_independent_sources(state: AppState) -> dict[str, OutputEventPayload]:
     haptic_settings = _all_haptics_disabled(state.haptic_effects)
     sources: dict[str, OutputEventPayload] = {}
@@ -409,11 +485,12 @@ def main() -> None:
     report = load_builtin_presets_into_state(state)
     _assert(report.loaded_files == 12, f"Expected 12 built-in presets, got {report.loaded_files}.")
     verify_l2_exclusivity(state)
+    verify_predictive_handbrake_base_resistance(state)
     sources = verify_haptic_independent_sources(state)
     verify_transient_producers_and_legacy_value_compatibility(state, sources)
     verify_kerb_wave_shared_tuning_and_side_switches(state, sources["RUMBLE_KERBS"])
     verify_drift_fade(state)
-    print("PASS: Trigger release fixes verified (L2 exclusivity, 5 producers, Kerb shared output, ON/OFF-only output, drift fade).")
+    print("PASS: Trigger release fixes verified (L2 exclusivity, predictive handbrake base hold, 5 producers, Kerb shared output, ON/OFF-only output, drift fade).")
 
 
 if __name__ == "__main__":

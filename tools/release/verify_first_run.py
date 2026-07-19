@@ -414,6 +414,36 @@ def _verify_idle_trigger_release() -> None:
 
 
 def _verify_hud_standby_visibility(app: QApplication) -> None:
+    def horizon_frame(
+        *,
+        is_race_on: bool = True,
+        speed: float = 0.0,
+        handbrake: float = 0.0,
+        wheel_speed: float = 0.0,
+        surface_rumble: float = 0.119,
+    ) -> TelemetryFrame:
+        return TelemetryFrame(
+            game_mode=GameMode.HORIZON,
+            parser_name="Forza Horizon Dash",
+            packet_size=324,
+            parsed=True,
+            is_race_on=is_race_on,
+            max_rpm=9000.0,
+            idle_rpm=900.0,
+            rpm=900.02,
+            speed=speed,
+            handbrake=handbrake,
+            wheel_rotation_speed_fl=wheel_speed,
+            wheel_rotation_speed_fr=wheel_speed,
+            wheel_rotation_speed_rl=wheel_speed,
+            wheel_rotation_speed_rr=wheel_speed,
+            surface_rumble_fl=surface_rumble,
+            surface_rumble_fr=surface_rumble,
+            surface_rumble_rl=surface_rumble,
+            surface_rumble_rr=surface_rumble,
+            source_note="HUD standby visibility verification frame.",
+        )
+
     state = AppState()
     state.hud.items["RPM"].enabled = True
     rpm = RpmHudOverlay(state)
@@ -439,6 +469,35 @@ def _verify_hud_standby_visibility(app: QApplication) -> None:
         rpm.sync_to_state()
         app.processEvents()
         _assert(rpm.isVisible(), "An enabled HUD did not return when valid driving telemetry started.")
+
+        state.telemetry.record_frame(horizon_frame())
+        rpm.sync_to_state()
+        app.processEvents()
+        _assert(rpm.isVisible(), "A stationary road packet was mistaken for the garage.")
+
+        garage_frame = horizon_frame(handbrake=255.0, surface_rumble=0.0)
+        for _ in range(state.telemetry.HUD_GARAGE_CONFIRM_PACKETS - 1):
+            state.telemetry.record_frame(garage_frame)
+        rpm.sync_to_state()
+        app.processEvents()
+        _assert(rpm.isVisible(), "A transient full-handbrake packet hid the HUD too early.")
+
+        state.telemetry.record_frame(garage_frame)
+        rpm.sync_to_state()
+        app.processEvents()
+        _assert(not rpm.isVisible(), "Confirmed Horizon garage packets did not hide the HUD.")
+
+        state.telemetry.record_frame(
+            horizon_frame(
+                speed=30.0,
+                handbrake=255.0,
+                wheel_speed=8.0,
+                surface_rumble=0.0,
+            )
+        )
+        rpm.sync_to_state()
+        app.processEvents()
+        _assert(rpm.isVisible(), "A moving handbrake input was mistaken for the garage.")
 
         state.packet_status = PacketStatus.WAITING
         rpm.sync_to_state()

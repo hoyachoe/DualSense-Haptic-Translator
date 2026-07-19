@@ -64,16 +64,9 @@ class HudOverlayBase(QWidget):
             self.update()
 
     def _has_active_driving_telemetry(self) -> bool:
-        telemetry = self.state.telemetry
-        try:
-            max_rpm = float(telemetry.last_max_rpm or 0.0)
-        except (TypeError, ValueError):
-            max_rpm = 0.0
         return (
             self.state.packet_status == PacketStatus.RECEIVING
-            and telemetry.last_parsed
-            and bool(telemetry.last_is_race_on)
-            and max_rpm > 0.0
+            and self.state.telemetry.has_active_hud_telemetry()
         )
 
     def _base_size(self) -> tuple[int, int]:

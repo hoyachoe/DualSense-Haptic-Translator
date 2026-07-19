@@ -1112,14 +1112,21 @@ class TriggerEffectEngine:
     def _brake_resistance_predictive_force(self, frame: TelemetryFrame, setting: EffectSetting) -> int:
         details = setting.details or {}
         self.brake_predictive_pulse = TriggerPulseOutput()
+        base_wall = _detail_int(details, "start_percent", 40, 40, 100)
+        base_force = 255.0 * _detail_int(details, "force_percent", 70, 0, 100) / 100.0
         if int(frame.handbrake or 0) > 0:
+            # The handbrake makes wheel-slip telemetry unsuitable for predictive
+            # foot-brake modulation. Suspend prediction and pulses, but retain the
+            # configured base wall so L2 does not suddenly become loose.
             self.brake_predictive.active = False
-            self.brake_predictive_state = BrakePredictiveState()
-            return 0
+            self.brake_predictive_state = BrakePredictiveState(
+                wall_smoothed=float(base_wall),
+                wall_start_percent=float(base_wall),
+            )
+            return _clamp_int(round(base_force), 0, 255)
 
         brake_percent = _clamp(float(frame.brake or 0.0) / 255.0 * 100.0, 0.0, 100.0)
         speed_kmh = max(0.0, float(frame.speed or 0.0))
-        base_wall = _detail_int(details, "start_percent", 40, 40, 100)
         min_wall = _detail_int(details, "max_percent", 30, 30, 95)
         min_wall = min(min_wall, max(30, base_wall - 1))
         prediction_strength = _detail_int(details, "wall_percent", 0, 0, 40)
@@ -1142,7 +1149,6 @@ class TriggerEffectEngine:
         else:
             slip_level = 0.0
 
-        base_force = 255.0 * _detail_int(details, "force_percent", 70, 0, 100) / 100.0
         force, self.brake_predictive_pulse = self._brake_slip_response(
             details,
             base_force,

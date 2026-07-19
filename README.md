@@ -1,6 +1,6 @@
 # DualSense Haptic Translator
 
-**Version 1.1 is the latest stable maintenance release.**
+**Version 1.11 is the latest stable patch release.**
 
 DualSense Haptic Translator converts Forza Horizon and Forza Motorsport UDP telemetry into DualSense haptic audio, adaptive trigger feedback, and configurable HUD overlays on Windows.
 
@@ -27,12 +27,12 @@ DualSense Haptic Translator converts Forza Horizon and Forza Motorsport UDP tele
 - Optional DSX output, telemetry relay, preset shortcuts, and Sound To Haptic.
 - English and Spanish main UI, with Korean, Chinese, and Spanish effect descriptions.
 
-## What's New In Version 1.1
+## What's New In Version 1.11
 
-- Main UI Scale now changes only the application interface. HUD overlay size and screen position remain independent.
-- Existing Version 1.0 HUD layouts are migrated once so they retain their previous on-screen appearance.
-- Haptic EQ Boost Gain is fully restored as a `0/10` to `10/10` control on the Haptic Strength row.
-- EQ Boost changes apply live, save with the app settings, and are restored automatically whenever DualSense output starts or restarts.
+- HUD Standby Hide now recognizes the Forza Horizon garage as well as menus.
+- Garage detection uses a short multi-packet confirmation and does not hide the HUD during moving handbrake use.
+- Predictive Brake Resistance keeps the configured base L2 wall while the handbrake is held, suspending only slip prediction and pulse modulation until release.
+- Version 1.1's independent HUD scaling and restored Haptic EQ Boost Gain behavior remain unchanged.
 
 ## Recommended Setup
 
@@ -73,9 +73,9 @@ Xbox App, Microsoft Store, or Game Pass versions may require a Windows AppContai
 - **Sound To Haptic** requires a compatible Windows audio source and output setup.
 - DS4Windows, Steam Input, reWASD, or other controller tools can conflict with device access or trigger output depending on their configuration.
 
-## Upgrading From 1.0 Or 0.9.x
+## Upgrading From 1.1, 1.0, Or 0.9.x
 
-Version 1.0 and compatible `0.92` settings using snapshot format `1` are preserved. On the next normal save or exit, the app creates a backup and records version `1.1`. Version 1.0 HUD layout values are migrated once to preserve their physical size and screen position. Older RPM settings without a style field continue to use Classic.
+Version 1.1, Version 1.0, and compatible `0.92` settings using snapshot format `1` are preserved. On the next normal save or exit, the app creates a backup and records version `1.11`. Version 1.0 HUD layout values are migrated once if needed to preserve their physical size and screen position. Older RPM settings without a style field continue to use Classic.
 
 ## Installation Video
 
