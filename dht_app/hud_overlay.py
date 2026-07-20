@@ -49,7 +49,7 @@ class HudOverlayBase(QWidget):
 
     def sync_to_state(self) -> None:
         item = self.state.hud.items.get(self.HUD_NAME)
-        should_show = bool(item and item.enabled) and (
+        should_show = bool(item and item.enabled) and not self.state.hud.shortcut_hidden and (
             self.STANDBY_HIDE_EXEMPT
             or not self.state.hud.standby_hide
             or self._has_active_driving_telemetry()

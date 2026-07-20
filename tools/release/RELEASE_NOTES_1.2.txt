@@ -1,0 +1,55 @@
+DualSense Haptic Translator 1.2 - Release Notes
+===============================================
+
+HORIZON HUD STANDBY HIDE
+
+- With Standby Hide enabled, Horizon HUD overlays now remain hidden after
+  menus, loading screens, and garage transitions until real wheel motion
+  confirms an active driving session.
+- Once driving is confirmed, stopping the car keeps the HUD visible until a
+  menu, invalid telemetry, a confirmed garage, or parser change resets it.
+- Throttle alone is deliberately excluded because Horizon can rev the engine
+  while the vehicle is fixed in the garage.
+- Motorsport keeps its previous standby behavior.
+
+TRIGGER PARITY AND CONTROLS
+
+- Fixed a tenfold slip-threshold conversion error in Throttle Resistance -
+  Traction, Brake Resistance, and Brake Resistance - Predictive. This could
+  cause false R2 traction pulses during stable high-speed driving and could
+  make brake slip behavior react too early.
+- Slip Threshold and Slip Off End now display and store decimal values from
+  0.1 to 5.0 in 0.1 steps, matching the legacy semantic range.
+- Predictive Brake Resistance clean defaults are restored to a 1.5 slip
+  threshold and a 40 start position. The prior workaround value 7 migrates to
+  1.5; other unsupported values are clamped to the valid range.
+- Advanced-control ranges now match their runtime limits. Controls with no
+  effect in the selected algorithm are no longer shown.
+- Brake resistance and throttle traction expose the supported Soft Pulse and
+  Strong Pulse choices. Gear Shift Kick restores independent Left, Right, and
+  Both side selection for upshifts and downshifts.
+- Acceleration G Punch pulse strength now matches the legacy output formula
+  instead of being scaled twice.
+
+PRESET SAVE SAFETY
+
+- Haptic and trigger preset content now persists only when the main SAVE
+  button is pressed.
+- Normal exit and preference actions such as UI scale, shortcuts, controller
+  settings, EQ boost, and Sound To Haptic preserve the last explicitly saved
+  preset payload instead of committing unrelated experimental edits.
+- Game and preset selection remain ordinary application preferences.
+
+SETTINGS COMPATIBILITY
+
+- Version 1.2 keeps settings snapshot format 1.
+- Existing 1.11, 1.1, 1.0, and compatible 0.92 settings load normally and are
+  backed up before the app records version 1.2 on the next settings save or
+  normal exit.
+- Unsupported settings formats are not loaded silently. Malformed settings are
+  reported and preserved instead of being overwritten automatically.
+
+PUBLIC PACKAGE CONTENTS
+
+The package intentionally excludes source code, developer launchers, internal
+documents, logs, caches, build intermediates, and personal settings.

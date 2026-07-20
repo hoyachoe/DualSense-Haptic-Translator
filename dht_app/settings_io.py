@@ -17,6 +17,7 @@ from .app_state import (
     clone_numeric_settings,
     is_output_graph_item,
 )
+from .detail_schema import TRIGGER_TENTHS_KEYS, normalize_trigger_tenths_value
 from .settings_model import EffectSetting, NumericSetting, clamp_setting_value
 from .version import APP_VERSION
 
@@ -24,6 +25,12 @@ from .version import APP_VERSION
 SNAPSHOT_SCHEMA = 1
 HUD_LAYOUT_VERSION = 2
 USER_PRESET_NAMES = ("User 1", "User 2")
+PRESET_CONTENT_KEYS = (
+    "haptic_effects",
+    "haptic_advanced",
+    "trigger_effects",
+    "trigger_advanced",
+)
 
 
 @dataclass(frozen=True)
@@ -69,9 +76,10 @@ def _export_options(state: AppState) -> dict[str, Any]:
         "tooltip_language": options.tooltip_language,
         "main_ui_scale": int(options.main_ui_scale),
         "haptic_low_boost_gain": int(options.haptic_low_boost_gain),
-        "preset_shortcut_enabled": bool(options.preset_shortcut_enabled),
+        "preset_shortcut_enabled": bool(options.preset_shortcut_combo),
         "preset_shortcut_combo": options.preset_shortcut_combo,
         "preset_shortcut_return_preset": options.preset_shortcut_return_preset,
+        "hud_shortcut_combo": options.hud_shortcut_combo,
         "telemetry_relay_enabled": bool(options.telemetry_relay_enabled),
         "telemetry_relay_host": options.telemetry_relay_host,
         "telemetry_relay_port": int(options.telemetry_relay_port),
@@ -218,6 +226,62 @@ def export_app_state(state: AppState) -> dict[str, Any]:
     }
 
 
+def preserve_saved_preset_content(
+    current_snapshot: dict[str, Any],
+    saved_snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep current preferences while restoring all preset content from SAVE.
+
+    Preset selection remains a current app preference. The selected slot's
+    haptic and trigger payload is therefore copied from the last explicitly
+    saved version of that slot, while every preset slot is restored wholesale.
+    """
+    merged = deepcopy(current_snapshot)
+    current_profiles = merged.get("game_profiles")
+    saved_profiles = saved_snapshot.get("game_profiles")
+    if not isinstance(current_profiles, dict) or not isinstance(saved_profiles, dict):
+        return merged
+
+    for game_key, current_profile in current_profiles.items():
+        if not isinstance(current_profile, dict):
+            continue
+        saved_profile = saved_profiles.get(game_key)
+        if not isinstance(saved_profile, dict):
+            continue
+
+        saved_presets = saved_profile.get("presets")
+        if isinstance(saved_presets, dict):
+            current_profile["presets"] = deepcopy(saved_presets)
+
+        selected_preset = current_profile.get("selected_preset")
+        selected_saved_payload = None
+        if isinstance(saved_presets, dict):
+            candidate = saved_presets.get(selected_preset)
+            if isinstance(candidate, dict):
+                selected_saved_payload = candidate
+        if selected_saved_payload is None:
+            selected_saved_payload = saved_profile
+
+        for key in PRESET_CONTENT_KEYS:
+            payload = selected_saved_payload.get(key)
+            if isinstance(payload, dict):
+                current_profile[key] = deepcopy(payload)
+
+    active_profile = current_profiles.get(merged.get("game_mode"))
+    if isinstance(active_profile, dict):
+        for key in PRESET_CONTENT_KEYS:
+            payload = active_profile.get(key)
+            if isinstance(payload, dict):
+                merged[key] = deepcopy(payload)
+    else:
+        for key in PRESET_CONTENT_KEYS:
+            payload = saved_snapshot.get(key)
+            if isinstance(payload, dict):
+                merged[key] = deepcopy(payload)
+
+    return merged
+
+
 def compare_snapshot_schema(snapshot: dict[str, Any]) -> int:
     snapshot_schema = snapshot.get("schema")
     if not isinstance(snapshot_schema, int) or isinstance(snapshot_schema, bool):
@@ -306,6 +370,24 @@ def _apply_effects(target: dict[str, EffectSetting], source: Any) -> list[str]:
             }
             if flat_details:
                 setting.details = flat_details
+        for key in TRIGGER_TENTHS_KEYS:
+            if key not in setting.details:
+                continue
+            try:
+                numeric_value = float(setting.details[key])
+            except (TypeError, ValueError):
+                continue
+            if (
+                name == "Brake Resistance - Predictive"
+                and key == "slip_threshold"
+                and abs(numeric_value - 7.0) < 0.0001
+            ):
+                # 7 was propagated across development presets as a temporary
+                # compensation for the former PySide6 tenfold unit defect.
+                # Restore the legacy Base semantic value during migration.
+                setting.details[key] = 1.5
+            else:
+                setting.details[key] = normalize_trigger_tenths_value(numeric_value)
         restored.append(name)
     return restored
 
@@ -333,6 +415,7 @@ def _apply_options(state: AppState, source: Any) -> list[str]:
         "tooltip_language",
         "preset_shortcut_combo",
         "preset_shortcut_return_preset",
+        "hud_shortcut_combo",
         "telemetry_relay_host",
         "dsx_host",
         "dsx_audio_device",
@@ -379,8 +462,21 @@ def _apply_options(state: AppState, source: Any) -> list[str]:
             value = _clamp_udp_port(value)
         setattr(options, key, value)
         restored.append(f"options.{key}")
-    options.preset_shortcut_pending_combo = options.preset_shortcut_combo
+    preset_combo = str(options.preset_shortcut_combo or "").strip()
+    hud_combo = str(options.hud_shortcut_combo or "").strip()
+    if preset_combo.casefold() == "none" or not options.preset_shortcut_enabled:
+        preset_combo = ""
+    if hud_combo.casefold() == "none":
+        hud_combo = ""
+    if preset_combo and hud_combo.casefold() == preset_combo.casefold():
+        hud_combo = ""
+    options.preset_shortcut_combo = preset_combo
+    options.preset_shortcut_enabled = bool(preset_combo)
+    options.hud_shortcut_combo = hud_combo
+    options.preset_shortcut_pending_combo = preset_combo
     options.preset_shortcut_capture_active = False
+    options.hud_shortcut_pending_combo = hud_combo
+    options.hud_shortcut_capture_active = False
     return restored
 
 

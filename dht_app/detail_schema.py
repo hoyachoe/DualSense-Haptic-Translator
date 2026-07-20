@@ -200,6 +200,10 @@ HAPTIC_DETAIL_RANGES: dict[str, dict[str, tuple[int, int]]] = {
 
 LR_BALANCE_KEYS = {"pan"}
 LR_BALANCE_STYLE = "lr_balance"
+DECIMAL_TENTHS_STYLE = "decimal_tenths"
+TRIGGER_TENTHS_KEYS = {"slip_threshold", "slip_end_threshold"}
+TRIGGER_TENTHS_MIN = 0.1
+TRIGGER_TENTHS_MAX = 5.0
 
 NATIVE_SOFT_PULSE_FREQUENCY_MAX = 180
 SLIP_PULSE_RATE_MAX = 120
@@ -290,19 +294,19 @@ TRIGGER_DETAIL_GROUPS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ),
     ),
     "Brake Pressure": (
-        ("Pedal Range", ("start_percent", "max_percent", "force_percent", "curve")),
+        ("Pedal Range", ("start_percent", "max_percent", "force_percent")),
     ),
     "Brake Resistance": (
         ("Resistance", ("force_percent", "start_percent")),
         ("Slip Release", ("slip_threshold", "slip_drop_low_percent")),
-        ("Slip Pulse Window", ("slip_pulse_start_percent", "slip_pulse_end_percent", "slip_pulse_rate")),
+        ("Slip Pulse Window", ("slip_pulse_start_percent", "slip_pulse_end_percent")),
         ("Soft Pulse", ("slip_soft_pulse_amplitude", "slip_soft_pulse_frequency", "slip_soft_pulse_start_zone")),
         ("Strong Pulse", ("slip_strong_pulse_amplitude", "slip_strong_pulse_rate")),
     ),
     "Brake Resistance - Predictive": (
         ("Resistance", ("force_percent", "start_percent", "max_percent", "wall_percent")),
         ("Slip Release", ("slip_threshold", "slip_drop_low_percent")),
-        ("Slip Pulse Window", ("slip_pulse_start_percent", "slip_pulse_end_percent", "slip_pulse_rate")),
+        ("Slip Pulse Window", ("slip_pulse_start_percent", "slip_pulse_end_percent")),
         ("Soft Pulse", ("slip_soft_pulse_amplitude", "slip_soft_pulse_frequency", "slip_soft_pulse_start_zone")),
         ("Strong Pulse", ("slip_strong_pulse_amplitude", "slip_strong_pulse_rate")),
     ),
@@ -318,35 +322,91 @@ TRIGGER_DETAIL_GROUPS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ("Kerb Output", ("kerb_l_start_percent", "kerb_low_hz", "kerb_high_hz", "kerb_l_low_amp", "kerb_l_high_amp")),
     ),
     "Throttle Pressure": (
-        ("Pedal Range", ("start_percent", "max_percent", "force_percent", "curve")),
-        ("Response", ("smooth_start_ms", "pulse_strength", "pulse_start_percent", "pulse_rate")),
+        ("Pedal Range", ("start_percent", "max_percent", "force_percent")),
+        ("Response", ("smooth_start_ms",)),
     ),
     "Throttle Resistance - Traction": (
         ("Resistance", ("force_percent", "max_percent", "wall_percent")),
-        ("Traction Slip", ("slip_threshold", "slip_end_threshold", "slip_drop_low_percent", "slip_low_percent")),
-        ("Slip Pulse Window", ("slip_pulse_start_percent", "slip_pulse_end_percent", "slip_pulse_rate")),
+        ("Traction Slip", ("slip_threshold", "slip_end_threshold", "slip_drop_low_percent")),
+        ("Slip Pulse Window", ("slip_pulse_start_percent", "slip_pulse_end_percent")),
         ("Soft Pulse", ("slip_soft_pulse_amplitude", "slip_soft_pulse_frequency", "slip_soft_pulse_start_zone")),
         ("Strong Pulse", ("slip_strong_pulse_amplitude", "slip_strong_pulse_rate")),
     ),
     "Acceleration G Punch": (
         ("Gear Scaling", ("max_rpm_offset", "gear_drop_offset", "pulse_gear_1_percent", "pulse_gear_2_percent", "pulse_gear_3_percent")),
         ("Fade", ("launch_wall_fade_percent", "shift_wall_fade_percent", "shift_fade_tail_percent")),
-        ("Pulse Timing", ("smooth_start_ms", "shift_pulse_boost_ms", "pulse_strength", "pulse_start_percent")),
-        ("Soft Pulse", ("slip_soft_pulse_amplitude", "slip_soft_pulse_frequency", "slip_soft_pulse_start_zone")),
-        ("Strong Pulse", ("slip_strong_pulse_amplitude", "slip_strong_pulse_rate")),
+        ("Pulse Timing", ("smooth_start_ms", "shift_pulse_boost_ms", "pulse_strength")),
+        ("Soft Pulse", ("slip_soft_pulse_frequency", "slip_soft_pulse_start_zone")),
+        ("Strong Pulse", ("slip_strong_pulse_rate",)),
     ),
     "Shift Down Howl": (
         ("Howl", ("howl_start_hz", "howl_end_hz", "howl_duration_ms", "howl_noise_percent", "howl_amp", "howl_start_zone")),
         ("Kick Soft Pulse", ("kick_strong_pulse_strength", "kick_strong_pulse_hz", "kick_strong_pulse_duration_ms")),
     ),
     "RPM Rev Limit": (
-        ("RPM Window", ("start_percent", "force_percent")),
+        ("RPM Window", ("start_percent",)),
         ("Soft Pulse", ("slip_soft_pulse_amplitude", "slip_soft_pulse_frequency", "slip_soft_pulse_start_zone")),
         ("Strong Pulse", ("slip_strong_pulse_amplitude", "slip_strong_pulse_rate")),
     ),
     "Impact Tick": (
         ("Soft Pulse Tick", ("slip_soft_pulse_amplitude", "slip_soft_pulse_frequency", "slip_soft_pulse_start_zone", "smooth_start_ms")),
     ),
+}
+
+
+# The trigger engine clamps these values per effect. Keeping the UI ranges here
+# prevents sliders from presenting values that the runtime silently clips.
+TRIGGER_DETAIL_RANGES: dict[str, dict[str, tuple[int, int]]] = {
+    "Drift Rumble Fade": {
+        "condition_strictness": (0, 10),
+        "wheelspin_buzz": (0, 10),
+        "throttle_pressure": (0, 10),
+        "throttle_traction": (0, 10),
+        "accel_g_punch": (0, 10),
+        "rpm_rev_limit": (0, 10),
+    },
+    "Brake Resistance - Predictive": {
+        "start_percent": (40, 100),
+        "max_percent": (30, 95),
+        "wall_percent": (0, 40),
+    },
+    "Gear Shift Kick": {
+        "upshift_duration_ms": (20, 180),
+        "downshift_duration_ms": (20, 180),
+        "early_input_soft_zone": (0, 60),
+        "kick_late_position": (0, 100),
+        "kick_softness": (0, 10),
+        "release_duration_ms": (0, 120),
+    },
+    "Collision Kick": {
+        "smooth_start_ms": (40, 300),
+    },
+    "Throttle Pressure": {
+        "smooth_start_ms": (0, 300),
+    },
+    "Throttle Resistance - Traction": {
+        "max_percent": (20, 95),
+        "wall_percent": (0, 60),
+    },
+    "Acceleration G Punch": {
+        "max_rpm_offset": (0, 10),
+        "gear_drop_offset": (0, 9),
+        "pulse_gear_1_percent": (0, 150),
+        "pulse_gear_2_percent": (0, 150),
+        "pulse_gear_3_percent": (0, 150),
+        "launch_wall_fade_percent": (0, 90),
+        "shift_wall_fade_percent": (0, 90),
+        "shift_fade_tail_percent": (0, 100),
+        "smooth_start_ms": (0, 200),
+        "shift_pulse_boost_ms": (0, 200),
+        "pulse_strength": (0, 100),
+    },
+    "RPM Rev Limit": {
+        "start_percent": (80, 99),
+    },
+    "Impact Tick": {
+        "smooth_start_ms": (40, 300),
+    },
 }
 
 
@@ -365,7 +425,7 @@ TRIGGER_OPTION_GROUPS: dict[str, tuple[tuple[str, tuple[tuple[str, str, str, tup
             "Slip Pulse Window",
             (
                 ("toggle", "slip_pulse_enabled", "Enable Slip Pulse", ()),
-                ("choice", "slip_pulse_style", "Pulse Type", ("Pulse Kick", "Soft Pulse", "Strong Pulse")),
+                ("choice", "slip_pulse_style", "Pulse Type", ("Soft Pulse", "Strong Pulse")),
             ),
         ),
     ),
@@ -374,7 +434,7 @@ TRIGGER_OPTION_GROUPS: dict[str, tuple[tuple[str, tuple[tuple[str, str, str, tup
             "Slip Pulse Window",
             (
                 ("toggle", "slip_pulse_enabled", "Enable Slip Pulse", ()),
-                ("choice", "slip_pulse_style", "Pulse Type", ("Pulse Kick", "Soft Pulse", "Strong Pulse")),
+                ("choice", "slip_pulse_style", "Pulse Type", ("Soft Pulse", "Strong Pulse")),
             ),
         ),
     ),
@@ -383,7 +443,21 @@ TRIGGER_OPTION_GROUPS: dict[str, tuple[tuple[str, tuple[tuple[str, str, str, tup
             "Slip Pulse Window",
             (
                 ("toggle", "slip_pulse_enabled", "Enable Slip Pulse", ()),
-                ("choice", "slip_pulse_style", "Pulse Type", ("Pulse Kick", "Soft Pulse", "Strong Pulse")),
+                ("choice", "slip_pulse_style", "Pulse Type", ("Soft Pulse", "Strong Pulse")),
+            ),
+        ),
+    ),
+    "Gear Shift Kick": (
+        (
+            "Upshift",
+            (
+                ("choice", "upshift_sides", "Upshift Side", ("Left", "Right", "Both")),
+            ),
+        ),
+        (
+            "Downshift",
+            (
+                ("choice", "downshift_sides", "Downshift Side", ("Left", "Right", "Both")),
             ),
         ),
     ),
@@ -439,7 +513,12 @@ def grouped_numeric_details(
     consumed: set[str] = set()
     groups: list[DetailGroupSpec] = []
     priority_rows: list[DetailRowSpec] = []
-    range_overrides = HAPTIC_DETAIL_RANGES.get(effect_name, {}) if group_map is HAPTIC_DETAIL_GROUPS else {}
+    if group_map is HAPTIC_DETAIL_GROUPS:
+        range_overrides = HAPTIC_DETAIL_RANGES.get(effect_name, {})
+    elif group_map is TRIGGER_DETAIL_GROUPS:
+        range_overrides = TRIGGER_DETAIL_RANGES.get(effect_name, {})
+    else:
+        range_overrides = {}
     for title, keys in group_map.get(effect_name, ()):
         grouped_rows: list[DetailRowSpec] = []
         for key in keys:
@@ -516,9 +595,14 @@ def _row_for_key(
     value = details.get(key)
     if isinstance(value, bool) or not isinstance(value, Number):
         return None
-    numeric_value = int(round(float(value)))
-    minimum, maximum = range_override or detail_range(key, numeric_value)
-    display_style = LR_BALANCE_STYLE if is_lr_balance_key(key) else ""
+    if key in TRIGGER_TENTHS_KEYS:
+        numeric_value = int(round(float(value) * 10.0))
+        minimum, maximum = 1, 50
+        display_style = DECIMAL_TENTHS_STYLE
+    else:
+        numeric_value = int(round(float(value)))
+        minimum, maximum = range_override or detail_range(key, numeric_value)
+        display_style = LR_BALANCE_STYLE if is_lr_balance_key(key) else ""
     return DetailRowSpec(detail_label(key), key, numeric_value, minimum, maximum, display_style)
 
 
@@ -616,7 +700,23 @@ def detail_range(key: str, value: int) -> tuple[int, int]:
 def format_detail_value(display_style: str, value: int, minimum: int = 0, maximum: int = 10) -> str:
     if display_style == LR_BALANCE_STYLE:
         return format_lr_balance_value(value, minimum, maximum)
+    if display_style == DECIMAL_TENTHS_STYLE:
+        return f"{int(value) / 10.0:.1f}"
     return str(value)
+
+
+def detail_value_from_slider(display_style: str, value: int) -> int | float:
+    if display_style == DECIMAL_TENTHS_STYLE:
+        return round(int(value) / 10.0, 1)
+    return int(value)
+
+
+def normalize_trigger_tenths_value(value: object, default: float = 1.0) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        numeric = float(default)
+    return round(max(TRIGGER_TENTHS_MIN, min(TRIGGER_TENTHS_MAX, numeric)), 1)
 
 
 def format_lr_balance_value(value: int, minimum: int = 0, maximum: int = 10) -> str:

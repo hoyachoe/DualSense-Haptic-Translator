@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 
@@ -39,6 +40,7 @@ from .settings_io import (
     compare_snapshot_schema,
     export_app_state,
     list_recoverable_user_preset_items,
+    preserve_saved_preset_content,
     summarize_snapshot,
 )
 from .version import APP_VERSION
@@ -138,7 +140,7 @@ def _float_status_value(values: dict, key: str, default: float = 0.0) -> float:
 
 def _normalize_dualsense_combo_text(value: object) -> str:
     text = str(value or "").strip()
-    if not text:
+    if not text or text.casefold() == "none":
         return ""
     text = text.replace("D-pad", "Dpad").replace("D_PAD", "Dpad")
     text = re.sub(r"(?i)\bdpad\s*up\b", "DpadUp", text)
@@ -224,6 +226,7 @@ class MainWindow(QMainWindow):
         self._settings_load_failed = False
         self._settings_upgrade_pending = False
         self._load_initial_settings()
+        self._persisted_preset_snapshot = export_app_state(self.state)
         self._apply_game_theme()
         self._restore_main_window_geometry()
         self.developer_mode = developer_mode_enabled()
@@ -267,12 +270,13 @@ class MainWindow(QMainWindow):
         self.fast_hud_timer = self._make_hud_timer(16, self._sync_fast_hud_overlays, precise=True)
         self.normal_hud_timer = self._make_hud_timer(33, self._sync_normal_hud_overlays)
         self.debug_hud_timer = self._make_hud_timer(66, self._sync_debug_hud_overlays)
-        self._preset_shortcut_capture_candidate = ""
-        self._preset_shortcut_previous_combo = ""
-        self._preset_shortcut_last_triggered_at = 0.0
-        self._preset_shortcut_capture_timer = QTimer(self)
-        self._preset_shortcut_capture_timer.setSingleShot(True)
-        self._preset_shortcut_capture_timer.timeout.connect(self._finish_preset_shortcut_capture)
+        self._gamepad_shortcut_capture_kind = ""
+        self._gamepad_shortcut_capture_candidate = ""
+        self._gamepad_shortcut_previous_combo = ""
+        self._gamepad_shortcut_last_triggered_at = 0.0
+        self._gamepad_shortcut_capture_timer = QTimer(self)
+        self._gamepad_shortcut_capture_timer.setSingleShot(True)
+        self._gamepad_shortcut_capture_timer.timeout.connect(self._finish_gamepad_shortcut_capture)
         self._last_telemetry_page_render_at = 0.0
         self._telemetry_page_render_interval = 0.05
         self._last_shell_state_render_at = 0.0
@@ -435,12 +439,14 @@ class MainWindow(QMainWindow):
 
         restored = apply_user_preset_recovery(self.state, snapshot)
         audit = audit_snapshot_structure(snapshot)
+        saved_snapshot = export_app_state(self.state)
         try:
-            result = save_settings_snapshot_with_backup(export_app_state(self.state))
+            result = save_settings_snapshot_with_backup(saved_snapshot)
         except SettingsStoreError as exc:
             self.state.footer.message = "Older settings imported, but save failed."
             self.state.footer.details = str(exc)
         else:
+            self._remember_persisted_preset_snapshot(saved_snapshot)
             self.state.mark_settings_saved()
             self.state.footer.message = "Older User presets imported."
             self.state.footer.details = (
@@ -718,30 +724,37 @@ class MainWindow(QMainWindow):
     def _handle_dualsense_button_status(self, values: dict, now: float) -> bool:
         options = self.state.options
         combo = _normalize_dualsense_combo_text(_dualsense_combo_from_status(values))
-        if options.preset_shortcut_capture_active:
+        capture_kind = self._gamepad_shortcut_capture_kind
+        if capture_kind in ("preset", "hud"):
             if combo:
-                candidate_count = _dualsense_combo_part_count(self._preset_shortcut_capture_candidate)
+                candidate_count = _dualsense_combo_part_count(self._gamepad_shortcut_capture_candidate)
                 combo_count = _dualsense_combo_part_count(combo)
-                if combo != self._preset_shortcut_capture_candidate and combo_count >= candidate_count:
-                    self._preset_shortcut_capture_candidate = combo
-                    options.preset_shortcut_pending_combo = f"{combo} ..."
-                    self._schedule_preset_shortcut_capture_finish()
+                if combo != self._gamepad_shortcut_capture_candidate and combo_count >= candidate_count:
+                    self._gamepad_shortcut_capture_candidate = combo
+                    setattr(options, f"{capture_kind}_shortcut_pending_combo", f"{combo} ...")
+                    self._schedule_gamepad_shortcut_capture_finish()
                     return True
             return False
 
-        saved_combo = _normalize_dualsense_combo_text(options.preset_shortcut_combo)
+        preset_combo = _normalize_dualsense_combo_text(options.preset_shortcut_combo)
+        hud_combo = _normalize_dualsense_combo_text(options.hud_shortcut_combo)
         if (
-            options.preset_shortcut_enabled
-            and saved_combo
-            and combo == saved_combo
-            and combo != self._preset_shortcut_previous_combo
-            and now - self._preset_shortcut_last_triggered_at >= 0.55
+            combo
+            and combo != self._gamepad_shortcut_previous_combo
+            and now - self._gamepad_shortcut_last_triggered_at >= 0.55
         ):
-            self._preset_shortcut_last_triggered_at = now
-            self._preset_shortcut_previous_combo = combo
-            self._toggle_user2_preset_shortcut()
-            return True
-        self._preset_shortcut_previous_combo = combo
+            if combo == preset_combo:
+                self._gamepad_shortcut_last_triggered_at = now
+                self._gamepad_shortcut_previous_combo = combo
+                self._toggle_user2_preset_shortcut()
+                return True
+            if combo == hud_combo:
+                self._gamepad_shortcut_last_triggered_at = now
+                self._gamepad_shortcut_previous_combo = combo
+                self.state.toggle_hud_shortcut_visibility()
+                self._sync_hud_overlays()
+                return True
+        self._gamepad_shortcut_previous_combo = combo
         return False
 
     def _toggle_user2_preset_shortcut(self) -> None:
@@ -783,7 +796,7 @@ class MainWindow(QMainWindow):
         self.debug_hud_timer.stop()
         self.telemetry_poll_timer.stop()
         self.dualsense_input_poll_timer.stop()
-        self._preset_shortcut_capture_timer.stop()
+        self._gamepad_shortcut_capture_timer.stop()
         for overlay in getattr(self, "hud_overlays", ()):
             overlay.close()
         self.telemetry_receiver.stop()
@@ -844,7 +857,7 @@ class MainWindow(QMainWindow):
         if not self.state.unsaved_changes:
             return
         try:
-            snapshot = export_app_state(self.state)
+            snapshot = self._snapshot_preserving_saved_presets()
             if self._settings_upgrade_pending:
                 save_settings_snapshot_with_backup(snapshot)
             else:
@@ -852,7 +865,18 @@ class MainWindow(QMainWindow):
         except SettingsStoreError:
             return
         self._settings_upgrade_pending = False
-        self.state.mark_settings_saved()
+        self._remember_persisted_preset_snapshot(snapshot)
+        self.state.mark_preferences_saved()
+
+    def _snapshot_preserving_saved_presets(self) -> dict:
+        current_snapshot = export_app_state(self.state)
+        return preserve_saved_preset_content(
+            current_snapshot,
+            self._persisted_preset_snapshot,
+        )
+
+    def _remember_persisted_preset_snapshot(self, snapshot: dict) -> None:
+        self._persisted_preset_snapshot = deepcopy(snapshot)
 
     def _show_game_menu(self, source_widget):
         language = self.state.options.main_ui_language
@@ -1013,11 +1037,24 @@ class MainWindow(QMainWindow):
 
     def _request_save(self):
         self.state.mark_save_requested()
-        self._save_current_settings(ui_text("Settings saved", self.state.options.main_ui_language))
+        self._save_current_settings(
+            ui_text("Settings saved", self.state.options.main_ui_language),
+            include_preset_changes=True,
+        )
         self.refresh_shell_state()
 
-    def _save_current_settings(self, success_message: str, details_prefix: str = "") -> bool:
-        snapshot = export_app_state(self.state)
+    def _save_current_settings(
+        self,
+        success_message: str,
+        details_prefix: str = "",
+        *,
+        include_preset_changes: bool = False,
+    ) -> bool:
+        snapshot = (
+            export_app_state(self.state)
+            if include_preset_changes
+            else self._snapshot_preserving_saved_presets()
+        )
         try:
             result = save_settings_snapshot_with_backup(snapshot)
         except SettingsStoreError as exc:
@@ -1026,7 +1063,11 @@ class MainWindow(QMainWindow):
             return False
         else:
             self._settings_upgrade_pending = False
-            self.state.mark_settings_saved()
+            self._remember_persisted_preset_snapshot(snapshot)
+            if include_preset_changes:
+                self.state.mark_settings_saved()
+            else:
+                self.state.mark_preferences_saved()
             backup_text = (
                 f" backup: {result.backup_path.name}"
                 if result.backup_path is not None
@@ -1101,13 +1142,15 @@ class MainWindow(QMainWindow):
 
         restored = apply_app_state_snapshot(self.state, snapshot)
         audit = audit_snapshot_structure(snapshot)
+        saved_snapshot = export_app_state(self.state)
         try:
-            result = save_settings_snapshot_with_backup(export_app_state(self.state))
+            result = save_settings_snapshot_with_backup(saved_snapshot)
         except SettingsStoreError as exc:
             self.state.footer.message = "Backup loaded, but save failed."
             self.state.footer.details = str(exc)
         else:
             self._settings_upgrade_pending = False
+            self._remember_persisted_preset_snapshot(saved_snapshot)
             self.state.mark_settings_saved()
             self.state.footer.message = f"Backup restored: {backup_path.name}"
             self.state.footer.details = (
@@ -1448,9 +1491,12 @@ class MainWindow(QMainWindow):
             "language_main": lambda source: self._show_main_ui_language_menu(source),
             "language_tooltip": lambda source: self._show_tooltip_language_menu(source),
             "main_ui_scale_value": lambda value: self._set_main_ui_scale(value),
-            "preset_shortcut_toggle": lambda checked=False: self._toggle_preset_shortcut(),
-            "preset_shortcut_capture": lambda checked=False: self._begin_preset_shortcut_capture(),
-            "preset_shortcut_apply": lambda checked=False: self._apply_preset_shortcut(),
+            "preset_shortcut_capture": lambda checked=False: self._begin_gamepad_shortcut_capture("preset"),
+            "preset_shortcut_apply": lambda checked=False: self._apply_gamepad_shortcut("preset"),
+            "preset_shortcut_delete": lambda checked=False: self._delete_gamepad_shortcut("preset"),
+            "hud_shortcut_capture": lambda checked=False: self._begin_gamepad_shortcut_capture("hud"),
+            "hud_shortcut_apply": lambda checked=False: self._apply_gamepad_shortcut("hud"),
+            "hud_shortcut_delete": lambda checked=False: self._delete_gamepad_shortcut("hud"),
             "telemetry_relay_toggle": lambda checked=False: self._toggle_telemetry_relay(),
             "telemetry_relay_host_value": lambda value: self._set_telemetry_relay_host(value),
             "telemetry_relay_port_value": lambda value: self._set_telemetry_relay_port(value),
@@ -1552,74 +1598,124 @@ class MainWindow(QMainWindow):
         self._render_content()
         self.refresh_shell_state()
 
-    def _toggle_preset_shortcut(self):
-        self.state.toggle_preset_shortcut()
-        self._render_content()
-        self.refresh_shell_state()
+    @staticmethod
+    def _gamepad_shortcut_label(shortcut_name: str) -> str:
+        return "Preset" if shortcut_name == "preset" else "HUD ON/OFF"
 
-    def _begin_preset_shortcut_capture(self):
+    def _begin_gamepad_shortcut_capture(self, shortcut_name: str):
+        if shortcut_name not in ("preset", "hud"):
+            return
         options = self.state.options
-        options.preset_shortcut_capture_active = True
-        options.preset_shortcut_pending_combo = "Hold DualSense shortcut..."
-        self._preset_shortcut_capture_candidate = ""
-        self._preset_shortcut_capture_timer.stop()
-        self.state.footer.message = "Preset shortcut capture is waiting."
+        for name in ("preset", "hud"):
+            setattr(options, f"{name}_shortcut_capture_active", False)
+            setattr(
+                options,
+                f"{name}_shortcut_pending_combo",
+                getattr(options, f"{name}_shortcut_combo"),
+            )
+        setattr(options, f"{shortcut_name}_shortcut_capture_active", True)
+        setattr(options, f"{shortcut_name}_shortcut_pending_combo", "Hold DualSense shortcut...")
+        self._gamepad_shortcut_capture_kind = shortcut_name
+        self._gamepad_shortcut_capture_candidate = ""
+        self._gamepad_shortcut_capture_timer.stop()
+        label = self._gamepad_shortcut_label(shortcut_name)
+        self.state.footer.message = f"{label} shortcut capture is waiting."
         self.state.footer.details = "Hold the DualSense button combination for a moment, then press Apply."
         self._render_content()
         self.refresh_shell_state()
 
-    def _schedule_preset_shortcut_capture_finish(self):
-        self._preset_shortcut_capture_timer.stop()
-        self._preset_shortcut_capture_timer.start(360)
+    def _schedule_gamepad_shortcut_capture_finish(self):
+        self._gamepad_shortcut_capture_timer.stop()
+        self._gamepad_shortcut_capture_timer.start(360)
 
-    def _finish_preset_shortcut_capture(self):
-        options = self.state.options
-        if not options.preset_shortcut_capture_active:
+    def _finish_gamepad_shortcut_capture(self):
+        shortcut_name = self._gamepad_shortcut_capture_kind
+        if shortcut_name not in ("preset", "hud"):
             return
-        combo = _normalize_dualsense_combo_text(self._preset_shortcut_capture_candidate)
+        options = self.state.options
+        if not getattr(options, f"{shortcut_name}_shortcut_capture_active"):
+            return
+        combo = _normalize_dualsense_combo_text(self._gamepad_shortcut_capture_candidate)
+        label = self._gamepad_shortcut_label(shortcut_name)
         if not combo:
-            options.preset_shortcut_pending_combo = "Hold DualSense shortcut..."
-            self.state.footer.message = "Preset shortcut capture is waiting."
+            setattr(options, f"{shortcut_name}_shortcut_pending_combo", "Hold DualSense shortcut...")
+            self.state.footer.message = f"{label} shortcut capture is waiting."
             self.state.footer.details = "No DualSense button combination has been detected yet."
             self._render_content()
             self.refresh_shell_state()
             return
-        options.preset_shortcut_pending_combo = combo
-        options.preset_shortcut_capture_active = False
-        self._preset_shortcut_capture_candidate = ""
-        self._preset_shortcut_previous_combo = combo
-        self.state.footer.message = f"Captured DualSense shortcut: {combo}"
+        setattr(options, f"{shortcut_name}_shortcut_pending_combo", combo)
+        setattr(options, f"{shortcut_name}_shortcut_capture_active", False)
+        self._gamepad_shortcut_capture_kind = ""
+        self._gamepad_shortcut_capture_candidate = ""
+        self._gamepad_shortcut_previous_combo = combo
+        self.state.footer.message = f"Captured {label} shortcut: {combo}"
         self.state.footer.details = "Press Apply to store this shortcut."
         self._render_content()
         self.refresh_shell_state()
 
-    def _apply_preset_shortcut(self):
-        options = self.state.options
-        pending = str(options.preset_shortcut_pending_combo or "").strip()
-        if options.preset_shortcut_capture_active or pending.endswith("..."):
-            self.state.footer.message = "Preset shortcut capture is still active."
-            self.state.footer.details = "Release the buttons for a moment, then press Apply after the captured shortcut appears."
-            self.refresh_shell_state()
+    def _apply_gamepad_shortcut(self, shortcut_name: str):
+        if shortcut_name not in ("preset", "hud"):
             return
-        if not pending or pending.startswith("Hold DualSense"):
-            self.state.footer.message = "Preset shortcut was not changed."
-            self.state.footer.details = "Click the shortcut field and hold a DualSense button combination first."
+        options = self.state.options
+        pending = str(getattr(options, f"{shortcut_name}_shortcut_pending_combo") or "").strip()
+        label = self._gamepad_shortcut_label(shortcut_name)
+        if getattr(options, f"{shortcut_name}_shortcut_capture_active") or pending.endswith("..."):
+            self.state.footer.message = f"{label} shortcut capture is still active."
+            self.state.footer.details = "Release the buttons for a moment, then press Apply after the captured shortcut appears."
             self.refresh_shell_state()
             return
         combo = _normalize_dualsense_combo_text(pending)
         if not combo:
-            self.state.footer.message = "Preset shortcut was not changed."
-            self.state.footer.details = "The captured shortcut was empty or invalid."
+            self.state.footer.message = f"{label} shortcut was not changed."
+            self.state.footer.details = "Click the shortcut field and hold a DualSense button combination, or press Delete."
             self.refresh_shell_state()
             return
-        options.preset_shortcut_combo = combo
-        options.preset_shortcut_pending_combo = combo
-        options.preset_shortcut_capture_active = False
-        self._preset_shortcut_capture_candidate = ""
-        self._preset_shortcut_capture_timer.stop()
-        self.state.apply_preset_shortcut()
+
+        other_name = "hud" if shortcut_name == "preset" else "preset"
+        other_combo = _normalize_dualsense_combo_text(getattr(options, f"{other_name}_shortcut_combo"))
+        reassigned = bool(other_combo and other_combo == combo)
+        if reassigned:
+            setattr(options, f"{other_name}_shortcut_combo", "")
+            setattr(options, f"{other_name}_shortcut_pending_combo", "")
+            if other_name == "hud":
+                self.state.hud.shortcut_hidden = False
+
+        setattr(options, f"{shortcut_name}_shortcut_combo", combo)
+        setattr(options, f"{shortcut_name}_shortcut_pending_combo", combo)
+        setattr(options, f"{shortcut_name}_shortcut_capture_active", False)
+        options.preset_shortcut_enabled = bool(options.preset_shortcut_combo)
+        self._gamepad_shortcut_capture_kind = ""
+        self._gamepad_shortcut_capture_candidate = ""
+        self._gamepad_shortcut_previous_combo = combo
+        self._gamepad_shortcut_capture_timer.stop()
+        self.state.apply_gamepad_shortcut(shortcut_name, combo)
         self.state.mark_unsaved_changes()
-        self._save_current_settings("Preset shortcut saved", f"Shortcut: {combo}.")
+        details = f"Shortcut: {combo}."
+        if reassigned:
+            details += f" The previous {self._gamepad_shortcut_label(other_name)} assignment was set to None."
+        self._save_current_settings(f"{label} shortcut saved", details)
+        self._render_content()
+        self.refresh_shell_state()
+
+    def _delete_gamepad_shortcut(self, shortcut_name: str):
+        if shortcut_name not in ("preset", "hud"):
+            return
+        options = self.state.options
+        setattr(options, f"{shortcut_name}_shortcut_combo", "")
+        setattr(options, f"{shortcut_name}_shortcut_pending_combo", "")
+        setattr(options, f"{shortcut_name}_shortcut_capture_active", False)
+        options.preset_shortcut_enabled = bool(options.preset_shortcut_combo)
+        if self._gamepad_shortcut_capture_kind == shortcut_name:
+            self._gamepad_shortcut_capture_kind = ""
+            self._gamepad_shortcut_capture_candidate = ""
+            self._gamepad_shortcut_capture_timer.stop()
+        if shortcut_name == "hud":
+            self.state.hud.shortcut_hidden = False
+        self.state.clear_gamepad_shortcut(shortcut_name)
+        self.state.mark_unsaved_changes()
+        label = self._gamepad_shortcut_label(shortcut_name)
+        self._save_current_settings(f"{label} shortcut deleted", "Shortcut: None.")
         self._render_content()
         self.refresh_shell_state()
 

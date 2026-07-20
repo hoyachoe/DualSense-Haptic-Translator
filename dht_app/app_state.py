@@ -6,6 +6,7 @@ import math
 from time import monotonic
 from typing import ClassVar
 
+from .detail_schema import TRIGGER_TENTHS_KEYS, normalize_trigger_tenths_value
 from .settings_model import (
     HAPTIC_ADVANCED_DEFAULTS,
     HAPTIC_EFFECT_DEFAULTS,
@@ -211,6 +212,7 @@ HORIZON_TELEMETRY_ITEMS = (
     "NormalizedDrivingLine",
     "NormalizedAIBrakeDifference",
 )
+HORIZON_TELEMETRY_ITEMS = tuple(sorted(HORIZON_TELEMETRY_ITEMS, key=str.casefold))
 
 
 MOTORSPORT_TELEMETRY_ITEMS = (
@@ -305,6 +307,7 @@ MOTORSPORT_TELEMETRY_ITEMS = (
     "TireWearRearRight",
     "TrackOrdinal",
 )
+MOTORSPORT_TELEMETRY_ITEMS = tuple(sorted(MOTORSPORT_TELEMETRY_ITEMS, key=str.casefold))
 
 
 TELEMETRY_ITEMS = tuple(
@@ -406,11 +409,16 @@ class OptionState:
     tooltip_language: str = "EN"
     main_ui_scale: int = 100
     haptic_low_boost_gain: int = 0
+    # Kept for backward-compatible settings import/export. Runtime enablement is
+    # derived from whether preset_shortcut_combo is empty.
     preset_shortcut_enabled: bool = True
     preset_shortcut_combo: str = "R1+R3"
     preset_shortcut_pending_combo: str = "R1+R3"
     preset_shortcut_capture_active: bool = False
     preset_shortcut_return_preset: str = "Base"
+    hud_shortcut_combo: str = ""
+    hud_shortcut_pending_combo: str = ""
+    hud_shortcut_capture_active: bool = False
     telemetry_relay_enabled: bool = False
     telemetry_relay_host: str = "127.0.0.1"
     telemetry_relay_port: int = 9000
@@ -448,6 +456,7 @@ class HudState:
     power_unit: str = "PS"
     boost_unit: str = "bar"
     rpm_style: str = "Digital Bar"
+    shortcut_hidden: bool = False
     items: dict[str, HudItemState] = field(
         default_factory=lambda: {
             name: HudItemState(enabled=False, scale=100)
@@ -621,7 +630,11 @@ class DriftHudState:
 
 @dataclass
 class TelemetryState:
-    HUD_GARAGE_CONFIRM_PACKETS: ClassVar[int] = 12
+    HUD_DRIVING_SPEED_KMH: ClassVar[float] = 1.0
+    HUD_DRIVING_WHEEL_SPEED: ClassVar[float] = 0.5
+    HUD_STATIONARY_POSITION_JUMP_METERS: ClassVar[float] = 15.0
+    HUD_POSITION_JUMP_CONFIRM_PACKETS: ClassVar[int] = 6
+    HUD_POSITION_STABILITY_METERS: ClassVar[float] = 5.0
     HISTORY_LIMIT: int = 144
     cards: list[TelemetryCardState] = field(
         default_factory=lambda: [
@@ -636,6 +649,7 @@ class TelemetryState:
     last_packet_size: int = 0
     last_parsed: bool = False
     last_is_race_on: bool | None = None
+    last_timestamp_ms: int | None = None
     last_speed: float | None = None
     last_rpm: float | None = None
     last_max_rpm: float | None = None
@@ -656,7 +670,12 @@ class TelemetryState:
     last_velocity_x: float | None = None
     last_velocity_y: float | None = None
     last_velocity_z: float | None = None
+    last_angular_velocity_x: float | None = None
     last_angular_velocity_y: float | None = None
+    last_angular_velocity_z: float | None = None
+    last_yaw: float | None = None
+    last_pitch: float | None = None
+    last_roll: float | None = None
     last_norm_suspension_travel_fl: float | None = None
     last_norm_suspension_travel_fr: float | None = None
     last_norm_suspension_travel_rl: float | None = None
@@ -669,6 +688,10 @@ class TelemetryState:
     last_wheel_on_rumble_strip_fr: int | None = None
     last_wheel_on_rumble_strip_rl: int | None = None
     last_wheel_on_rumble_strip_rr: int | None = None
+    last_wheel_in_puddle_fl: float | int | None = None
+    last_wheel_in_puddle_fr: float | int | None = None
+    last_wheel_in_puddle_rl: float | int | None = None
+    last_wheel_in_puddle_rr: float | int | None = None
     last_surface_rumble_fl: float | None = None
     last_surface_rumble_fr: float | None = None
     last_surface_rumble_rl: float | None = None
@@ -685,15 +708,40 @@ class TelemetryState:
     last_tire_combined_slip_fr: float | None = None
     last_tire_combined_slip_rl: float | None = None
     last_tire_combined_slip_rr: float | None = None
+    last_suspension_travel_meters_fl: float | None = None
+    last_suspension_travel_meters_fr: float | None = None
+    last_suspension_travel_meters_rl: float | None = None
+    last_suspension_travel_meters_rr: float | None = None
     last_tire_temp_fl: float | None = None
     last_tire_temp_fr: float | None = None
     last_tire_temp_rl: float | None = None
     last_tire_temp_rr: float | None = None
     last_car_ordinal: int | None = None
     last_car_class: int | None = None
+    last_car_performance_index: int | None = None
     last_drive_train: int | None = None
+    last_num_cylinders: int | None = None
+    last_car_group: int | None = None
     last_smashable_vel_diff: float | None = None
     last_smashable_mass: float | None = None
+    last_position_x: float | None = None
+    last_position_y: float | None = None
+    last_position_z: float | None = None
+    last_fuel: float | None = None
+    last_distance_traveled: float | None = None
+    last_best_lap: float | None = None
+    last_last_lap: float | None = None
+    last_current_lap: float | None = None
+    last_current_race_time: float | None = None
+    last_lap_number: int | None = None
+    last_race_position: int | None = None
+    last_normalized_driving_line: int | None = None
+    last_normalized_ai_brake_difference: int | None = None
+    last_tire_wear_fl: float | None = None
+    last_tire_wear_fr: float | None = None
+    last_tire_wear_rl: float | None = None
+    last_tire_wear_rr: float | None = None
+    last_track_ordinal: int | None = None
     last_note: str = "No telemetry frame received yet."
     histories: dict[str, list[float]] = field(default_factory=dict)
     output_histories: dict[str, list[float]] = field(default_factory=dict)
@@ -711,7 +759,10 @@ class TelemetryState:
     rpm_hud_previous_car_ordinal: int = 0
     rpm_hud_previous_gear: int | None = None
     rpm_hud_previous_rpm: float = 0.0
-    hud_garage_candidate_packets: int = 0
+    hud_horizon_driving_confirmed: bool = False
+    hud_last_world_position: tuple[float, float, float] | None = None
+    hud_position_jump_candidate: tuple[float, float, float] | None = None
+    hud_position_jump_candidate_packets: int = 0
     engine_hud_boost_peak_by_car: dict[int, float] = field(default_factory=dict)
     engine_hud_boost_display_by_car: dict[int, float] = field(default_factory=dict)
     engine_hud_power_peak_by_car: dict[int, float] = field(default_factory=dict)
@@ -736,73 +787,139 @@ class TelemetryState:
         )
 
     @staticmethod
-    def _finite_magnitude_within(value: float | None, limit: float) -> bool:
+    def _finite_magnitude_at_least(value: float | None, limit: float) -> bool:
         try:
             number = float(value)
         except (TypeError, ValueError):
             return False
-        return math.isfinite(number) and abs(number) <= limit
+        return math.isfinite(number) and abs(number) >= limit
 
-    def _looks_like_horizon_garage_standby(self) -> bool:
-        """Identify Horizon garage packets without treating a driving handbrake as standby."""
-        if (
-            self.last_parser_name != "Forza Horizon Dash"
-            or not self.last_parsed
-            or not bool(self.last_is_race_on)
-            or not self._finite_magnitude_within(self.last_speed, 0.5)
-        ):
-            return False
-
+    def _has_hud_vehicle_motion(self) -> bool:
         try:
-            handbrake = float(self.last_handbrake)
+            speed_kmh = abs(float(self.last_speed or 0.0))
         except (TypeError, ValueError):
-            return False
-        if not math.isfinite(handbrake) or handbrake < 254.0:
-            return False
-
-        # Horizon keeps IsRaceOn and the loaded car active in the garage. Captured
-        # garage packets instead have a full game-applied handbrake, no wheel
-        # motion, and no surface simulation. Requiring the complete signature
-        # avoids hiding during ordinary e-brake turns or while the car is moving.
+            speed_kmh = 0.0
         wheel_speeds = (
             self.last_wheel_rotation_speed_fl,
             self.last_wheel_rotation_speed_fr,
             self.last_wheel_rotation_speed_rl,
             self.last_wheel_rotation_speed_rr,
         )
-        surface_rumble = (
-            self.last_surface_rumble_fl,
-            self.last_surface_rumble_fr,
-            self.last_surface_rumble_rl,
-            self.last_surface_rumble_rr,
+        wheel_motion = any(
+            self._finite_magnitude_at_least(value, self.HUD_DRIVING_WHEEL_SPEED)
+            for value in wheel_speeds
         )
-        return all(
-            self._finite_magnitude_within(value, 0.05) for value in wheel_speeds
-        ) and all(
-            self._finite_magnitude_within(value, 0.001) for value in surface_rumble
+        return (
+            math.isfinite(speed_kmh)
+            and speed_kmh >= self.HUD_DRIVING_SPEED_KMH
+        ) or wheel_motion
+
+    def _current_hud_world_position(self) -> tuple[float, float, float] | None:
+        try:
+            position = (
+                float(self.last_position_x),
+                float(self.last_position_y),
+                float(self.last_position_z),
+            )
+        except (TypeError, ValueError):
+            return None
+        if not all(math.isfinite(value) for value in position):
+            return None
+        if all(abs(value) <= 0.01 for value in position):
+            return None
+        return position
+
+    @staticmethod
+    def _hud_position_distance(
+        first: tuple[float, float, float],
+        second: tuple[float, float, float],
+    ) -> float:
+        return math.sqrt(
+            sum(
+                (current - previous) ** 2
+                for current, previous in zip(first, second)
+            )
         )
 
-    def _update_hud_garage_standby_state(self) -> None:
-        if self._looks_like_horizon_garage_standby():
-            self.hud_garage_candidate_packets = min(
-                self.HUD_GARAGE_CONFIRM_PACKETS,
-                self.hud_garage_candidate_packets + 1,
-            )
-        else:
-            self.hud_garage_candidate_packets = 0
+    def _clear_hud_position_jump_candidate(self) -> None:
+        self.hud_position_jump_candidate = None
+        self.hud_position_jump_candidate_packets = 0
+
+    def _update_hud_stationary_position_transition(self) -> None:
+        """Reset the driving latch after a confirmed stationary world-position teleport."""
+        if (
+            self.last_parser_name != "Forza Horizon Dash"
+            or not self.last_parsed
+            or not bool(self.last_is_race_on)
+        ):
+            self.hud_last_world_position = None
+            self._clear_hud_position_jump_candidate()
+            return
+
+        current_position = self._current_hud_world_position()
+        if current_position is None:
+            self.hud_last_world_position = None
+            self._clear_hud_position_jump_candidate()
+            return
+
+        previous_position = self.hud_last_world_position
+        self.hud_last_world_position = current_position
+
+        if self._has_hud_vehicle_motion():
+            self._clear_hud_position_jump_candidate()
+            return
+
+        candidate = self.hud_position_jump_candidate
+        if candidate is not None:
+            if self._hud_position_distance(candidate, current_position) <= self.HUD_POSITION_STABILITY_METERS:
+                self.hud_position_jump_candidate_packets += 1
+                if self.hud_position_jump_candidate_packets >= self.HUD_POSITION_JUMP_CONFIRM_PACKETS:
+                    self.hud_horizon_driving_confirmed = False
+                    self._clear_hud_position_jump_candidate()
+                return
+            self._clear_hud_position_jump_candidate()
+
+        if previous_position is None:
+            return
+        if (
+            self._hud_position_distance(previous_position, current_position)
+            >= self.HUD_STATIONARY_POSITION_JUMP_METERS
+        ):
+            self.hud_position_jump_candidate = current_position
+            self.hud_position_jump_candidate_packets = 1
+
+    def _update_hud_driving_confirmation(self) -> None:
+        """Latch Horizon HUD visibility only after real vehicle motion is observed."""
+        if self.last_parser_name != "Forza Horizon Dash":
+            self.hud_horizon_driving_confirmed = False
+            return
+        if (
+            not self.last_parsed
+            or not bool(self.last_is_race_on)
+        ):
+            self.hud_horizon_driving_confirmed = False
+            return
+        if self.hud_horizon_driving_confirmed:
+            return
+        if self._has_hud_vehicle_motion():
+            self.hud_horizon_driving_confirmed = True
 
     def has_active_hud_telemetry(self) -> bool:
         try:
             max_rpm = float(self.last_max_rpm or 0.0)
         except (TypeError, ValueError):
             max_rpm = 0.0
-        return (
+        valid_active_packet = (
             self.last_parsed
             and bool(self.last_is_race_on)
             and math.isfinite(max_rpm)
             and max_rpm > 0.0
-            and self.hud_garage_candidate_packets < self.HUD_GARAGE_CONFIRM_PACKETS
         )
+        if not valid_active_packet:
+            return False
+        if self.last_parser_name == "Forza Horizon Dash":
+            return self.hud_horizon_driving_confirmed
+        return True
 
     def record_frame(self, frame) -> None:
         self.packet_count += 1
@@ -810,6 +927,7 @@ class TelemetryState:
         self.last_packet_size = int(frame.packet_size)
         self.last_parsed = bool(frame.parsed)
         self.last_is_race_on = frame.is_race_on
+        self.last_timestamp_ms = frame.timestamp_ms
         self.last_speed = frame.speed
         self.last_rpm = frame.rpm
         self.last_max_rpm = frame.max_rpm
@@ -830,7 +948,12 @@ class TelemetryState:
         self.last_velocity_x = frame.velocity_x
         self.last_velocity_y = frame.velocity_y
         self.last_velocity_z = frame.velocity_z
+        self.last_angular_velocity_x = frame.angular_velocity_x
         self.last_angular_velocity_y = frame.angular_velocity_y
+        self.last_angular_velocity_z = frame.angular_velocity_z
+        self.last_yaw = frame.yaw
+        self.last_pitch = frame.pitch
+        self.last_roll = frame.roll
         self.last_norm_suspension_travel_fl = frame.norm_suspension_travel_fl
         self.last_norm_suspension_travel_fr = frame.norm_suspension_travel_fr
         self.last_norm_suspension_travel_rl = frame.norm_suspension_travel_rl
@@ -843,6 +966,10 @@ class TelemetryState:
         self.last_wheel_on_rumble_strip_fr = frame.wheel_on_rumble_strip_fr
         self.last_wheel_on_rumble_strip_rl = frame.wheel_on_rumble_strip_rl
         self.last_wheel_on_rumble_strip_rr = frame.wheel_on_rumble_strip_rr
+        self.last_wheel_in_puddle_fl = frame.wheel_in_puddle_fl
+        self.last_wheel_in_puddle_fr = frame.wheel_in_puddle_fr
+        self.last_wheel_in_puddle_rl = frame.wheel_in_puddle_rl
+        self.last_wheel_in_puddle_rr = frame.wheel_in_puddle_rr
         self.last_surface_rumble_fl = frame.surface_rumble_fl
         self.last_surface_rumble_fr = frame.surface_rumble_fr
         self.last_surface_rumble_rl = frame.surface_rumble_rl
@@ -859,17 +986,43 @@ class TelemetryState:
         self.last_tire_combined_slip_fr = frame.tire_combined_slip_fr
         self.last_tire_combined_slip_rl = frame.tire_combined_slip_rl
         self.last_tire_combined_slip_rr = frame.tire_combined_slip_rr
+        self.last_suspension_travel_meters_fl = frame.suspension_travel_meters_fl
+        self.last_suspension_travel_meters_fr = frame.suspension_travel_meters_fr
+        self.last_suspension_travel_meters_rl = frame.suspension_travel_meters_rl
+        self.last_suspension_travel_meters_rr = frame.suspension_travel_meters_rr
         self.last_tire_temp_fl = frame.tire_temp_fl
         self.last_tire_temp_fr = frame.tire_temp_fr
         self.last_tire_temp_rl = frame.tire_temp_rl
         self.last_tire_temp_rr = frame.tire_temp_rr
         self.last_car_ordinal = frame.car_ordinal
         self.last_car_class = frame.car_class
+        self.last_car_performance_index = frame.car_performance_index
         self.last_drive_train = frame.drive_train
+        self.last_num_cylinders = frame.num_cylinders
+        self.last_car_group = frame.car_group
         self.last_smashable_vel_diff = frame.smashable_vel_diff
         self.last_smashable_mass = frame.smashable_mass
+        self.last_position_x = frame.position_x
+        self.last_position_y = frame.position_y
+        self.last_position_z = frame.position_z
+        self.last_fuel = frame.fuel
+        self.last_distance_traveled = frame.distance_traveled
+        self.last_best_lap = frame.best_lap
+        self.last_last_lap = frame.last_lap
+        self.last_current_lap = frame.current_lap
+        self.last_current_race_time = frame.current_race_time
+        self.last_lap_number = frame.lap_number
+        self.last_race_position = frame.race_position
+        self.last_normalized_driving_line = frame.normalized_driving_line
+        self.last_normalized_ai_brake_difference = frame.normalized_ai_brake_difference
+        self.last_tire_wear_fl = frame.tire_wear_fl
+        self.last_tire_wear_fr = frame.tire_wear_fr
+        self.last_tire_wear_rl = frame.tire_wear_rl
+        self.last_tire_wear_rr = frame.tire_wear_rr
+        self.last_track_ordinal = frame.track_ordinal
         self.last_note = frame.source_note
-        self._update_hud_garage_standby_state()
+        self._update_hud_stationary_position_transition()
+        self._update_hud_driving_confirmation()
         if self.last_parsed:
             self._record_rpm_hud_shift_guide()
             self.update_drift_hud_state(monotonic())
@@ -889,6 +1042,7 @@ class TelemetryState:
         key = canonical_telemetry_name(telemetry_name)
         values = {
             "IsRaceOn": None if self.last_is_race_on is None else int(bool(self.last_is_race_on)),
+            "TimestampMS": self.last_timestamp_ms,
             "EngineMaxRpm": self.last_max_rpm,
             "EngineIdleRpm": self.last_idle_rpm,
             "CurrentEngineRpm": self.last_rpm,
@@ -898,7 +1052,12 @@ class TelemetryState:
             "VelocityX": self.last_velocity_x,
             "VelocityY": self.last_velocity_y,
             "VelocityZ": self.last_velocity_z,
+            "AngularVelocityX": self.last_angular_velocity_x,
             "AngularVelocityY": self.last_angular_velocity_y,
+            "AngularVelocityZ": self.last_angular_velocity_z,
+            "Yaw": self.last_yaw,
+            "Pitch": self.last_pitch,
+            "Roll": self.last_roll,
             "NormalizedSuspensionTravelFrontLeft": self.last_norm_suspension_travel_fl,
             "NormalizedSuspensionTravelFrontRight": self.last_norm_suspension_travel_fr,
             "NormalizedSuspensionTravelRearLeft": self.last_norm_suspension_travel_rl,
@@ -915,6 +1074,14 @@ class TelemetryState:
             "WheelOnRumbleStripFrontRight": self.last_wheel_on_rumble_strip_fr,
             "WheelOnRumbleStripRearLeft": self.last_wheel_on_rumble_strip_rl,
             "WheelOnRumbleStripRearRight": self.last_wheel_on_rumble_strip_rr,
+            "WheelInPuddleFrontLeft": self.last_wheel_in_puddle_fl,
+            "WheelInPuddleFrontRight": self.last_wheel_in_puddle_fr,
+            "WheelInPuddleRearLeft": self.last_wheel_in_puddle_rl,
+            "WheelInPuddleRearRight": self.last_wheel_in_puddle_rr,
+            "WheelInPuddleDepthFrontLeft": self.last_wheel_in_puddle_fl,
+            "WheelInPuddleDepthFrontRight": self.last_wheel_in_puddle_fr,
+            "WheelInPuddleDepthRearLeft": self.last_wheel_in_puddle_rl,
+            "WheelInPuddleDepthRearRight": self.last_wheel_in_puddle_rr,
             "SurfaceRumbleFrontLeft": self.last_surface_rumble_fl,
             "SurfaceRumbleFrontRight": self.last_surface_rumble_fr,
             "SurfaceRumbleRearLeft": self.last_surface_rumble_rl,
@@ -927,11 +1094,21 @@ class TelemetryState:
             "TireCombinedSlipFrontRight": self.last_tire_combined_slip_fr,
             "TireCombinedSlipRearLeft": self.last_tire_combined_slip_rl,
             "TireCombinedSlipRearRight": self.last_tire_combined_slip_rr,
+            "SuspensionTravelMetersFrontLeft": self.last_suspension_travel_meters_fl,
+            "SuspensionTravelMetersFrontRight": self.last_suspension_travel_meters_fr,
+            "SuspensionTravelMetersRearLeft": self.last_suspension_travel_meters_rl,
+            "SuspensionTravelMetersRearRight": self.last_suspension_travel_meters_rr,
             "CarOrdinal": self.last_car_ordinal,
             "CarClass": self.last_car_class,
+            "CarPerformanceIndex": self.last_car_performance_index,
             "DrivetrainType": self.last_drive_train,
+            "NumCylinders": self.last_num_cylinders,
+            "CarGroup": self.last_car_group,
             "SmashableVelDiff": self.last_smashable_vel_diff,
             "SmashableMass": self.last_smashable_mass,
+            "PositionX": self.last_position_x,
+            "PositionY": self.last_position_y,
+            "PositionZ": self.last_position_z,
             "Speed": self.last_speed,
             "Power": self.last_power,
             "Torque": self.last_torque,
@@ -940,12 +1117,27 @@ class TelemetryState:
             "TireTempRearLeft": self.last_tire_temp_rl,
             "TireTempRearRight": self.last_tire_temp_rr,
             "Boost": self.last_boost,
+            "Fuel": self.last_fuel,
+            "DistanceTraveled": self.last_distance_traveled,
+            "BestLap": self.last_best_lap,
+            "LastLap": self.last_last_lap,
+            "CurrentLap": self.last_current_lap,
+            "CurrentRaceTime": self.last_current_race_time,
+            "LapNumber": self.last_lap_number,
+            "RacePosition": self.last_race_position,
             "Accel": self.last_throttle,
             "Brake": self.last_brake,
             "Clutch": self.last_clutch,
             "HandBrake": self.last_handbrake,
             "Gear": self.last_gear,
             "Steer": self.last_steer,
+            "NormalizedDrivingLine": self.last_normalized_driving_line,
+            "NormalizedAIBrakeDifference": self.last_normalized_ai_brake_difference,
+            "TireWearFrontLeft": self.last_tire_wear_fl,
+            "TireWearFrontRight": self.last_tire_wear_fr,
+            "TireWearRearLeft": self.last_tire_wear_rl,
+            "TireWearRearRight": self.last_tire_wear_rr,
+            "TrackOrdinal": self.last_track_ordinal,
             "Drift": self.last_drift,
         }
         return values.get(key)
@@ -982,7 +1174,24 @@ class TelemetryState:
             return self._format_value(float(value), "")
         if key == "Steer":
             return self._format_value(float(value), "")
-        if key in {"IsRaceOn", "Gear", "CarOrdinal", "CarClass", "DrivetrainType"}:
+        if key.startswith("Position"):
+            return self._format_value(float(value), "", 3)
+        if key in {
+            "IsRaceOn",
+            "TimestampMS",
+            "Gear",
+            "CarOrdinal",
+            "CarClass",
+            "CarPerformanceIndex",
+            "DrivetrainType",
+            "NumCylinders",
+            "CarGroup",
+            "LapNumber",
+            "RacePosition",
+            "NormalizedDrivingLine",
+            "NormalizedAIBrakeDifference",
+            "TrackOrdinal",
+        } or key.startswith("WheelOnRumbleStrip") or key.startswith("WheelInPuddle") and not key.startswith("WheelInPuddleDepth"):
             return str(int(value))
         return self._format_value(float(value), "", 2)
 
@@ -1051,8 +1260,14 @@ class TelemetryState:
             return self._clamp_signed_graph_value(float(self.raw_telemetry_value_for(key) or 0.0) / 20.0)
         if key.startswith("Velocity"):
             return self._clamp_signed_graph_value(float(self.raw_telemetry_value_for(key) or 0.0) / 100.0)
-        if key == "AngularVelocityY":
-            return self._clamp_signed_graph_value(float(self.last_angular_velocity_y or 0.0) / 5.0)
+        if key.startswith("AngularVelocity"):
+            return self._clamp_signed_graph_value(float(self.raw_telemetry_value_for(key) or 0.0) / 5.0)
+        if key in {"Yaw", "Pitch", "Roll"}:
+            return self._clamp_signed_graph_value(float(self.raw_telemetry_value_for(key) or 0.0) / math.pi)
+        if key.startswith("WheelInPuddle"):
+            return self._clamp_graph_value(float(self.raw_telemetry_value_for(key) or 0.0))
+        if key.startswith("SuspensionTravelMeters"):
+            return self._clamp_graph_value(float(self.raw_telemetry_value_for(key) or 0.0))
         if key.startswith("TireSlipRatio") or key.startswith("TireSlipAngle") or key.startswith("TireCombinedSlip"):
             return self._clamp_graph_value(abs(float(self.raw_telemetry_value_for(key) or 0.0)) / 3.0)
         if key.startswith("TireTemp"):
@@ -1063,8 +1278,37 @@ class TelemetryState:
             return self._clamp_graph_value(float(self.last_smashable_mass or 0.0) / 500.0)
         if key == "CarClass":
             return self._clamp_graph_value(float(self.last_car_class or 0) / 10.0)
+        if key == "CarPerformanceIndex":
+            return self._clamp_graph_value(float(self.last_car_performance_index or 0) / 1000.0)
         if key == "DrivetrainType":
             return self._clamp_graph_value(float(self.last_drive_train or 0) / 3.0)
+        if key == "NumCylinders":
+            return self._clamp_graph_value(float(self.last_num_cylinders or 0) / 16.0)
+        if key == "CarGroup":
+            return self._clamp_graph_value(float(self.last_car_group or 0) / 100.0)
+        if key in {"PositionX", "PositionZ"}:
+            return self._clamp_signed_graph_value(float(self.raw_telemetry_value_for(key) or 0.0) / 10_000.0)
+        if key == "PositionY":
+            return self._clamp_signed_graph_value(float(self.last_position_y or 0.0) / 2_000.0)
+        if key == "Fuel":
+            return self._clamp_graph_value(self.last_fuel)
+        if key == "DistanceTraveled":
+            return self._clamp_graph_value(float(self.last_distance_traveled or 0.0) / 100_000.0)
+        if key in {"BestLap", "LastLap", "CurrentLap"}:
+            return self._clamp_graph_value(float(self.raw_telemetry_value_for(key) or 0.0) / 600.0)
+        if key == "CurrentRaceTime":
+            return self._clamp_graph_value(float(self.last_current_race_time or 0.0) / 3600.0)
+        if key == "LapNumber":
+            return self._clamp_graph_value(float(self.last_lap_number or 0) / 100.0)
+        if key == "RacePosition":
+            return self._clamp_graph_value(float(self.last_race_position or 0) / 24.0)
+        if key in {"NormalizedDrivingLine", "NormalizedAIBrakeDifference"}:
+            return self._clamp_signed_graph_value(float(self.raw_telemetry_value_for(key) or 0.0) / 127.0)
+        if key.startswith("TireWear"):
+            wear = float(self.raw_telemetry_value_for(key) or 0.0)
+            return self._clamp_graph_value(wear / 100.0 if abs(wear) > 1.0 else wear)
+        if key == "TrackOrdinal":
+            return self._clamp_graph_value(float(self.last_track_ordinal or 0) / 1000.0)
         return None
 
     def g_force_values(self) -> tuple[float, float]:
@@ -1736,6 +1980,7 @@ class AppState:
     packet_status: PacketStatus = PacketStatus.WAITING
     dualsense_status: DualSenseStatus = DualSenseStatus.CONNECTED
     unsaved_changes: bool = False
+    preset_unsaved_changes: bool = False
     game_mode: GameMode = GameMode.HORIZON
     selected_preset: str = "Base"
     selected_haptic_effect: str = "Road Bumps"
@@ -1854,7 +2099,15 @@ class AppState:
     def mark_unsaved_changes(self) -> None:
         self.unsaved_changes = True
 
+    def mark_preset_unsaved_changes(self) -> None:
+        self.preset_unsaved_changes = True
+        self.unsaved_changes = True
+
+    def mark_preferences_saved(self) -> None:
+        self.unsaved_changes = self.preset_unsaved_changes
+
     def mark_settings_saved(self) -> None:
+        self.preset_unsaved_changes = False
         self.unsaved_changes = False
 
     def set_udp_port(self, port: str | int) -> bool:
@@ -1912,7 +2165,7 @@ class AppState:
         self.load_game_profile(self.game_mode)
         self.footer.message = f"Preset values loaded: {source_preset} -> {self.selected_preset}"
         self.footer.details = f"{self.selected_game_label} current preset was overwritten with selected preset values."
-        self.mark_unsaved_changes()
+        self.mark_preset_unsaved_changes()
 
     def restore_current_preset_original_settings(self) -> None:
         self.sync_current_game_profile()
@@ -1923,7 +2176,7 @@ class AppState:
         self.load_game_profile(self.game_mode)
         self.footer.message = f"Original settings restored: {self.selected_preset}"
         self.footer.details = f"{self.selected_game_label} preset slot restored from the built-in original preset store."
-        self.mark_unsaved_changes()
+        self.mark_preset_unsaved_changes()
 
     def mark_save_requested(self) -> None:
         self.footer.message = f"Save requested for preset: {self.selected_preset}"
@@ -2090,16 +2343,21 @@ class AppState:
         self.footer.details = "Main UI scale will be applied the next time the app starts."
         self.mark_unsaved_changes()
 
-    def toggle_preset_shortcut(self) -> None:
-        self.options.preset_shortcut_enabled = not self.options.preset_shortcut_enabled
-        state = "ON" if self.options.preset_shortcut_enabled else "OFF"
-        self.footer.message = f"Preset shortcut {state}"
-        self.footer.details = f"Shortcut combo: {self.options.preset_shortcut_combo}"
-        self.mark_unsaved_changes()
+    def apply_gamepad_shortcut(self, shortcut_name: str, combo: str) -> None:
+        label = "Preset" if shortcut_name == "preset" else "HUD ON/OFF"
+        self.footer.message = f"{label} shortcut applied: {combo}"
+        self.footer.details = "The gamepad shortcut was stored for the selected DualSense device."
 
-    def apply_preset_shortcut(self) -> None:
-        self.footer.message = f"Preset shortcut applied: {self.options.preset_shortcut_combo}"
-        self.footer.details = "Shortcut preference was stored for the selected DualSense device."
+    def clear_gamepad_shortcut(self, shortcut_name: str) -> None:
+        label = "Preset" if shortcut_name == "preset" else "HUD ON/OFF"
+        self.footer.message = f"{label} shortcut deleted."
+        self.footer.details = "None disables this gamepad shortcut."
+
+    def toggle_hud_shortcut_visibility(self) -> None:
+        self.hud.shortcut_hidden = not self.hud.shortcut_hidden
+        state = "OFF" if self.hud.shortcut_hidden else "ON"
+        self.footer.message = f"HUD shortcut: overlays {state}"
+        self.footer.details = "Individual HUD enable, scale, opacity, and position settings were preserved."
 
     def toggle_telemetry_relay(self) -> None:
         self.options.telemetry_relay_enabled = not self.options.telemetry_relay_enabled
@@ -2464,7 +2722,7 @@ class AppState:
         self.sync_current_game_profile()
         self.footer.message = f"Haptic effect value updated: {name} = {setting.value}"
         self.footer.details = "Stored in the current preset. Use SAVE to persist this change."
-        self.mark_unsaved_changes()
+        self.mark_preset_unsaved_changes()
 
     def toggle_haptic_effect(self, name: str) -> None:
         self.select_haptic_effect(name)
@@ -2476,7 +2734,7 @@ class AppState:
         state = "ON" if setting.enabled else "OFF"
         self.footer.message = f"Haptic effect toggled: {name} {state}"
         self.footer.details = "Stored in the current preset. Use SAVE to persist this change."
-        self.mark_unsaved_changes()
+        self.mark_preset_unsaved_changes()
 
     def set_haptic_detail_value(self, key: str, value: int) -> None:
         if self.selected_haptic_effect not in self.haptic_effects:
@@ -2488,7 +2746,7 @@ class AppState:
         self.sync_current_game_profile()
         self.footer.message = f"Haptic detail updated: {self.selected_haptic_effect} / {key} = {value}"
         self.footer.details = "Stored in the current preset detail payload. Use SAVE to persist this change."
-        self.mark_unsaved_changes()
+        self.mark_preset_unsaved_changes()
 
     def set_haptic_advanced_value(self, name: str, value: int) -> None:
         setting = self.haptic_advanced[name]
@@ -2496,7 +2754,7 @@ class AppState:
         self.sync_current_game_profile()
         self.footer.message = f"Haptic advanced value updated: {name} = {setting.value}"
         self.footer.details = "Stored in the current preset. Use SAVE to persist this change."
-        self.mark_unsaved_changes()
+        self.mark_preset_unsaved_changes()
 
     def set_trigger_effect_value(self, name: str, value: int) -> None:
         self.select_trigger_effect(name)
@@ -2507,7 +2765,7 @@ class AppState:
         self.sync_current_game_profile()
         self.footer.message = f"Trigger effect value updated: {name} = {setting.value}"
         self.footer.details = "Stored in the current preset. Use SAVE to persist this change."
-        self.mark_unsaved_changes()
+        self.mark_preset_unsaved_changes()
 
     def toggle_trigger_effect(self, name: str) -> None:
         self.select_trigger_effect(name)
@@ -2521,7 +2779,7 @@ class AppState:
         state = "ON" if setting.enabled else "OFF"
         self.footer.message = f"Trigger effect toggled: {name} {state}"
         self.footer.details = "Stored in the current preset. Use SAVE to persist this change."
-        self.mark_unsaved_changes()
+        self.mark_preset_unsaved_changes()
 
     def normalize_trigger_brake_exclusivity(self, prefer: str | None = None) -> None:
         active = [
@@ -2548,6 +2806,8 @@ class AppState:
             stored_value = value
         elif isinstance(value, str):
             stored_value = value
+        elif key in TRIGGER_TENTHS_KEYS:
+            stored_value = normalize_trigger_tenths_value(value)
         else:
             stored_value = int(value)
         detail_keys = (key,)
@@ -2560,7 +2820,7 @@ class AppState:
         self.sync_current_game_profile()
         self.footer.message = f"Trigger detail updated: {self.selected_trigger_effect} / {key} = {stored_value}"
         self.footer.details = "Stored in the current preset detail payload. Use SAVE to persist this change."
-        self.mark_unsaved_changes()
+        self.mark_preset_unsaved_changes()
 
     def set_trigger_advanced_value(self, name: str, value: int) -> None:
         setting = self.trigger_advanced[name]
@@ -2568,7 +2828,7 @@ class AppState:
         self.sync_current_game_profile()
         self.footer.message = f"Trigger advanced value updated: {name} = {setting.value}"
         self.footer.details = "Stored in the current preset. Use SAVE to persist this change."
-        self.mark_unsaved_changes()
+        self.mark_preset_unsaved_changes()
 
 
 def _next_language(current: str, values: tuple[str, ...]) -> str:

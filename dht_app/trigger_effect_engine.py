@@ -670,8 +670,10 @@ class TriggerEffectEngine:
         min_wall = _detail_int(details, "max_percent", 45, 20, 95)
         min_wall = min(min_wall, max(20, base_wall - 1))
         prediction_strength = _detail_int(details, "wall_percent", 35, 0, 60)
-        slip_threshold = _detail_float(details, "slip_threshold", 1.6, 0.1, 50.0) / 10.0
-        slip_end_threshold = _detail_float(details, "slip_end_threshold", 2.2, 0.1, 50.0) / 10.0
+        # PySide6 details already store semantic slip ratios. The legacy /10
+        # conversion only normalized Tkinter's fixed-point IntVar controls.
+        slip_threshold = _detail_float(details, "slip_threshold", 1.6, 0.1, 5.0)
+        slip_end_threshold = _detail_float(details, "slip_end_threshold", 2.2, 0.1, 5.0)
         slip_end_threshold = max(slip_threshold + 0.1, slip_end_threshold)
 
         driven_slip, driven_combined = self._throttle_driven_slip_values(frame)
@@ -1043,15 +1045,38 @@ class TriggerEffectEngine:
         if not _detail_bool(details, "slip_pulse_enabled", True):
             return TriggerPulseOutput()
         pulse_strength = _detail_int(details, "pulse_strength", 18, 0, 100)
-        return _trigger_pulse_output_from_style(
-            details,
-            _clamp(pulse_level, 0.0, 1.0) * pulse_strength / 100.0,
-            default_style="Soft Pulse",
-            default_strong_amp=80,
-            default_strong_rate=80,
-            default_soft_amp=3,
-            default_soft_frequency=24,
-            default_soft_start_zone=1,
+        level = _clamp(pulse_level, 0.0, 1.0)
+        if pulse_strength <= 0 or level <= 0.0:
+            return TriggerPulseOutput()
+
+        # Legacy Acceleration G Punch uses Pulse Strength as the amplitude
+        # control itself. Applying the generic Soft/Strong amplitude settings
+        # here would scale the output twice and make the PySide6 port weaker.
+        style = _normalize_pulse_style(details.get("slip_pulse_style", "Soft Pulse"), default_style="Soft Pulse")
+        if style == "Strong Pulse":
+            pulse = _clamp_int(round(255.0 * pulse_strength / 100.0 * level), 0, 255)
+            if pulse <= 0:
+                return TriggerPulseOutput()
+            return TriggerPulseOutput(
+                display=pulse,
+                pulse=pulse,
+                pulse_rate=_detail_int(details, "slip_strong_pulse_rate", 80, 1, 255),
+            )
+
+        vibrate_amp = _clamp_int(round(8.0 * pulse_strength / 100.0 * level), 0, 8)
+        if vibrate_amp <= 0:
+            return TriggerPulseOutput()
+        return TriggerPulseOutput(
+            display=_clamp_int(round(255.0 * vibrate_amp / 8.0), 0, 255),
+            vibrate_amp=vibrate_amp,
+            vibrate_freq=_detail_int(
+                details,
+                "slip_soft_pulse_frequency",
+                24,
+                1,
+                NATIVE_SOFT_PULSE_FREQUENCY_MAX,
+            ),
+            vibrate_start_zone=_detail_int(details, "slip_soft_pulse_start_zone", 1, 0, 9),
         )
 
     @staticmethod
@@ -1097,7 +1122,8 @@ class TriggerEffectEngine:
             or _detail_bool(details, "slip_pulse_enabled", False)
         )
         if slip_release_enabled and brake_percent >= 10.0 and speed_kmh >= BRAKE_SLIP_RESPONSE_MIN_SPEED_KMH:
-            slip_threshold = _detail_float(details, "slip_threshold", 1.6, 0.1, 50.0) / 10.0
+            # Preset details contain the semantic ratio, not Tkinter's x10 UI value.
+            slip_threshold = _detail_float(details, "slip_threshold", 1.6, 0.1, 5.0)
             slip_level = self._brake_resistance_slip_off_level(frame, slip_threshold)
             force, self.brake_resistance_pulse = self._brake_slip_response(
                 details,
@@ -1143,7 +1169,8 @@ class TriggerEffectEngine:
         self.brake_predictive_state.wall_smoothed = wall_position
         self.brake_predictive_state.wall_start_percent = wall_position
 
-        slip_threshold = _detail_float(details, "slip_threshold", 1.6, 0.1, 50.0) / 10.0
+        # Preset details contain the semantic ratio, not Tkinter's x10 UI value.
+        slip_threshold = _detail_float(details, "slip_threshold", 1.6, 0.1, 5.0)
         if speed_kmh >= BRAKE_SLIP_RESPONSE_MIN_SPEED_KMH and brake_percent >= max(3.0, wall_position - 2.0):
             slip_level = self._brake_resistance_slip_off_level(frame, slip_threshold)
         else:
@@ -1651,50 +1678,6 @@ def _amp_from_percent(percent: int | float) -> int:
     if value <= 0:
         return 0
     return _clamp_int(round(value * 8 / 100.0), 1, 8)
-
-
-def _trigger_pulse_output_from_style(
-    details: Mapping[str, object],
-    level: float,
-    *,
-    default_style: str,
-    default_strong_amp: int,
-    default_strong_rate: int,
-    default_soft_amp: int,
-    default_soft_frequency: int,
-    default_soft_start_zone: int,
-) -> TriggerPulseOutput:
-    output_level = _clamp(level, 0.0, 1.0)
-    if output_level <= 0.0:
-        return TriggerPulseOutput()
-    style = _normalize_pulse_style(details.get("slip_pulse_style", default_style), default_style=default_style)
-    if style == "Strong Pulse":
-        strong_amp = _detail_int(details, "slip_strong_pulse_amplitude", default_strong_amp, 1, 255)
-        pulse = _clamp_int(round(strong_amp * output_level), 0, 255)
-        if pulse <= 0:
-            return TriggerPulseOutput()
-        return TriggerPulseOutput(
-            display=pulse,
-            pulse=pulse,
-            pulse_rate=_detail_int(details, "slip_strong_pulse_rate", default_strong_rate, 1, 255),
-        )
-
-    soft_amp = _detail_int(details, "slip_soft_pulse_amplitude", default_soft_amp, 1, 8)
-    vibrate_amp = _clamp_int(round(soft_amp * output_level), 0, 8)
-    if vibrate_amp <= 0:
-        return TriggerPulseOutput()
-    return TriggerPulseOutput(
-        display=_clamp_int(round(255.0 * vibrate_amp / 8.0), 0, 255),
-        vibrate_amp=vibrate_amp,
-        vibrate_freq=_detail_int(
-            details,
-            "slip_soft_pulse_frequency",
-            default_soft_frequency,
-            1,
-            NATIVE_SOFT_PULSE_FREQUENCY_MAX,
-        ),
-        vibrate_start_zone=_detail_int(details, "slip_soft_pulse_start_zone", default_soft_start_zone, 0, 9),
-    )
 
 
 def _merge_trigger_pulse_outputs(*outputs: TriggerPulseOutput) -> TriggerPulseOutput:

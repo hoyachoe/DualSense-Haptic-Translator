@@ -26,6 +26,7 @@ from dht_app.detail_schema import TRIGGER_DETAIL_GROUPS  # noqa: E402
 from dht_app.hud_overlay import PresetHudOverlay, RpmHudOverlay  # noqa: E402
 from dht_app.pages_hud import build_hud_dashboard_page  # noqa: E402
 from dht_app.settings_io import (  # noqa: E402
+    PRESET_CONTENT_KEYS,
     SNAPSHOT_SCHEMA,
     compare_snapshot_schema,
     export_app_state,
@@ -153,10 +154,10 @@ def _verify_packet_refresh_preserves_live_controls(window: MainWindow, app: QApp
 
 def _verify_trigger_preset_defaults_and_group_order(window: MainWindow) -> None:
     expected = {
-        "start_percent": 20,
+        "start_percent": 40,
         "max_percent": 70,
         "wall_percent": 35,
-        "slip_threshold": 7,
+        "slip_threshold": 1.5,
         "slip_drop_low_percent": 1,
     }
     for game_mode in GameMode:
@@ -286,6 +287,7 @@ def _verify_clean_first_run(temp_root: Path, app: QApplication) -> None:
         "A HUD overlay opened automatically on clean first run.",
     )
     _assert("dht_app.telemetry_test_packets" not in sys.modules, "Developer packet module loaded at startup.")
+    saved_preset_baseline = export_app_state(window.state)
 
     collected_text: list[str] = []
     for page in ("select_dualsense", "hud", "telemetry"):
@@ -317,8 +319,35 @@ def _verify_clean_first_run(temp_root: Path, app: QApplication) -> None:
     _assert(not device.get("selected_device"), "First-run settings saved a personal controller device.")
     options = snapshot.get("options", {})
     _assert(not options.get("dsx_audio_device"), "First-run settings saved a personal DSX device.")
+    for game_mode in GameMode:
+        game_key = game_mode.value
+        _assert(
+            snapshot["game_profiles"][game_key]["presets"]
+            == saved_preset_baseline["game_profiles"][game_key]["presets"],
+            f"Graceful close auto-saved unsaved {game_key} preset edits.",
+        )
     user_files = sorted(path.name for path in settings_path.parent.iterdir())
     _assert(user_files == [settings_store.SETTINGS_FILE_NAME], f"Unexpected first-run user_data contents: {user_files}")
+
+    saved_window = MainWindow()
+    app.processEvents()
+    saved_window.state.set_haptic_effect_value("Road Bumps", 1)
+    saved_window.state.set_trigger_detail_value("force_percent", 5)
+    expected_saved_snapshot = export_app_state(saved_window.state)
+    saved_window._request_save()
+    app.processEvents()
+    explicit_snapshot = json.loads(settings_path.read_text(encoding="utf-8"))
+    for key in PRESET_CONTENT_KEYS:
+        _assert(
+            explicit_snapshot[key] == expected_saved_snapshot[key],
+            f"Explicit SAVE did not persist {key}.",
+        )
+    _assert(
+        explicit_snapshot["game_profiles"] == expected_saved_snapshot["game_profiles"],
+        "Explicit SAVE did not persist all game-specific preset slots.",
+    )
+    saved_window.close()
+    app.processEvents()
 
 
 def _verify_legacy_092_schema_1_upgrade(temp_root: Path, app: QApplication) -> None:
@@ -418,9 +447,11 @@ def _verify_hud_standby_visibility(app: QApplication) -> None:
         *,
         is_race_on: bool = True,
         speed: float = 0.0,
+        throttle: float = 0.0,
         handbrake: float = 0.0,
         wheel_speed: float = 0.0,
         surface_rumble: float = 0.119,
+        position: tuple[float, float, float] = (-2666.2, 113.587, -5820.3),
     ) -> TelemetryFrame:
         return TelemetryFrame(
             game_mode=GameMode.HORIZON,
@@ -432,6 +463,7 @@ def _verify_hud_standby_visibility(app: QApplication) -> None:
             idle_rpm=900.0,
             rpm=900.02,
             speed=speed,
+            throttle=throttle,
             handbrake=handbrake,
             wheel_rotation_speed_fl=wheel_speed,
             wheel_rotation_speed_fr=wheel_speed,
@@ -441,6 +473,9 @@ def _verify_hud_standby_visibility(app: QApplication) -> None:
             surface_rumble_fr=surface_rumble,
             surface_rumble_rl=surface_rumble,
             surface_rumble_rr=surface_rumble,
+            position_x=position[0],
+            position_y=position[1],
+            position_z=position[2],
             source_note="HUD standby visibility verification frame.",
         )
 
@@ -458,34 +493,73 @@ def _verify_hud_standby_visibility(app: QApplication) -> None:
         _assert(not rpm.isVisible(), "Standby Hide ON did not hide an enabled HUD while waiting.")
 
         state.packet_status = PacketStatus.RECEIVING
-        state.telemetry.last_parsed = True
-        state.telemetry.last_is_race_on = False
-        state.telemetry.last_max_rpm = 8000.0
+        state.telemetry.record_frame(horizon_frame(is_race_on=False))
         rpm.sync_to_state()
         app.processEvents()
         _assert(not rpm.isVisible(), "Menu packets incorrectly bypassed Standby Hide.")
 
-        state.telemetry.last_is_race_on = True
+        state.telemetry.record_frame(horizon_frame())
         rpm.sync_to_state()
         app.processEvents()
-        _assert(rpm.isVisible(), "An enabled HUD did not return when valid driving telemetry started.")
+        _assert(not rpm.isVisible(), "A stationary post-menu packet bypassed driving confirmation.")
+
+        state.telemetry.record_frame(horizon_frame(speed=30.0, wheel_speed=8.0))
+        rpm.sync_to_state()
+        app.processEvents()
+        _assert(rpm.isVisible(), "Confirmed Horizon driving did not reveal the HUD.")
 
         state.telemetry.record_frame(horizon_frame())
         rpm.sync_to_state()
         app.processEvents()
-        _assert(rpm.isVisible(), "A stationary road packet was mistaken for the garage.")
+        _assert(rpm.isVisible(), "A brief stop cleared a confirmed Horizon driving session.")
 
-        garage_frame = horizon_frame(handbrake=255.0, surface_rumble=0.0)
-        for _ in range(state.telemetry.HUD_GARAGE_CONFIRM_PACKETS - 1):
-            state.telemetry.record_frame(garage_frame)
+        state.telemetry.record_frame(horizon_frame(is_race_on=False))
+        state.telemetry.record_frame(horizon_frame())
         rpm.sync_to_state()
         app.processEvents()
-        _assert(rpm.isVisible(), "A transient full-handbrake packet hid the HUD too early.")
+        _assert(not rpm.isVisible(), "A stationary road return after a menu bypassed driving confirmation.")
 
-        state.telemetry.record_frame(garage_frame)
+        state.telemetry.record_frame(horizon_frame(speed=30.0, wheel_speed=8.0))
         rpm.sync_to_state()
         app.processEvents()
-        _assert(not rpm.isVisible(), "Confirmed Horizon garage packets did not hide the HUD.")
+        _assert(rpm.isVisible(), "Driving after a menu did not restore the HUD immediately.")
+
+        road_handbrake_frame = horizon_frame(handbrake=255.0, surface_rumble=0.0)
+        for _ in range(state.telemetry.HUD_POSITION_JUMP_CONFIRM_PACKETS * 2):
+            state.telemetry.record_frame(road_handbrake_frame)
+        rpm.sync_to_state()
+        app.processEvents()
+        _assert(rpm.isVisible(), "A stationary road handbrake input was mistaken for a garage transition.")
+
+        direct_entry_position = (-2690.168, 113.586, -5827.922)
+        transition_frame = horizon_frame(
+            handbrake=0.0,
+            surface_rumble=0.0,
+            position=direct_entry_position,
+        )
+        state.telemetry.record_frame(transition_frame)
+        for _ in range(state.telemetry.HUD_POSITION_JUMP_CONFIRM_PACKETS - 2):
+            state.telemetry.record_frame(transition_frame)
+        rpm.sync_to_state()
+        app.processEvents()
+        _assert(rpm.isVisible(), "A single stationary position jump hid the HUD before confirmation.")
+
+        state.telemetry.record_frame(transition_frame)
+        rpm.sync_to_state()
+        app.processEvents()
+        _assert(not rpm.isVisible(), "A confirmed stationary position transition did not hide the HUD.")
+
+        state.telemetry.record_frame(
+            horizon_frame(
+                throttle=255.0,
+                handbrake=0.0,
+                surface_rumble=0.0,
+                position=direct_entry_position,
+            )
+        )
+        rpm.sync_to_state()
+        app.processEvents()
+        _assert(not rpm.isVisible(), "Game-generated throttle without vehicle motion revealed the HUD.")
 
         state.telemetry.record_frame(
             horizon_frame(
@@ -497,7 +571,24 @@ def _verify_hud_standby_visibility(app: QApplication) -> None:
         )
         rpm.sync_to_state()
         app.processEvents()
-        _assert(rpm.isVisible(), "A moving handbrake input was mistaken for the garage.")
+        _assert(rpm.isVisible(), "Real vehicle motion did not restore the HUD after a position transition.")
+
+        state.telemetry.record_frame(
+            TelemetryFrame(
+                game_mode=GameMode.MOTORSPORT,
+                parser_name="Forza Motorsport Dash",
+                packet_size=331,
+                parsed=True,
+                is_race_on=True,
+                max_rpm=8500.0,
+                rpm=850.0,
+                speed=0.0,
+                source_note="Motorsport HUD standby compatibility frame.",
+            )
+        )
+        rpm.sync_to_state()
+        app.processEvents()
+        _assert(rpm.isVisible(), "Horizon driving confirmation changed Motorsport standby behavior.")
 
         state.packet_status = PacketStatus.WAITING
         rpm.sync_to_state()

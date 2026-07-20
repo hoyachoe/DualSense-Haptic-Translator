@@ -119,40 +119,76 @@ def _build_window_scale_option_card(options: OptionState, callbacks: OptionCallb
     return card
 
 
-def _build_preset_shortcut_option_card(options: OptionState, callbacks: OptionCallbacks | None = None) -> OptionCard:
-    tooltip = option_tooltip("Preset Shortcut", options.tooltip_language)
+def _add_gamepad_shortcut_row(
+    card: OptionCard,
+    options: OptionState,
+    callbacks: OptionCallbacks | None,
+    shortcut_name: str,
+    label_text: str,
+    combo: str,
+    capture_active: bool,
+) -> None:
+    row = QHBoxLayout()
+    row.setSpacing(6)
+    label = _make_option_label(ui_text(label_text, options.main_ui_language))
+    label.setFixedWidth(118)
+    row.addWidget(label)
+
+    display_combo = combo if combo else ui_text("None", options.main_ui_language)
+    shortcut = _make_option_button(display_combo, 100)
+    shortcut.setProperty("shortcutKind", shortcut_name)
+    shortcut.setProperty("shortcutAction", "capture")
+    if capture_active:
+        shortcut.setProperty("active", "true")
+    _set_tooltip(shortcut, action_tooltip(f"{shortcut_name}_shortcut_capture", options.tooltip_language))
+    _connect_callback(shortcut, callbacks, f"{shortcut_name}_shortcut_capture")
+    row.addWidget(shortcut)
+
+    apply = QPushButton(ui_text("Apply", options.main_ui_language))
+    apply.setFixedWidth(52)
+    apply.setProperty("shortcutKind", shortcut_name)
+    apply.setProperty("shortcutAction", "apply")
+    _set_tooltip(apply, action_tooltip(f"{shortcut_name}_shortcut_apply", options.tooltip_language))
+    _connect_callback(apply, callbacks, f"{shortcut_name}_shortcut_apply")
+    row.addWidget(apply)
+
+    delete = QPushButton(ui_text("Delete", options.main_ui_language))
+    delete.setFixedWidth(54)
+    delete.setProperty("shortcutKind", shortcut_name)
+    delete.setProperty("shortcutAction", "delete")
+    _set_tooltip(delete, action_tooltip(f"{shortcut_name}_shortcut_delete", options.tooltip_language))
+    _connect_callback(delete, callbacks, f"{shortcut_name}_shortcut_delete")
+    row.addWidget(delete)
+    row.addStretch(1)
+    card.layout.addLayout(row)
+
+
+def _build_gamepad_shortcut_option_card(options: OptionState, callbacks: OptionCallbacks | None = None) -> OptionCard:
+    tooltip = option_tooltip("Gamepad Shortcut", options.tooltip_language)
     card = OptionCard(
-        ui_text("Preset Shortcut", options.main_ui_language),
-        ui_text("Use a DualSense button combination to jump to User 2, then press the same combination again to return.", options.main_ui_language),
+        ui_text("Gamepad Shortcut", options.main_ui_language),
+        ui_text("Assign DualSense button combinations. None disables a shortcut.", options.main_ui_language),
         tooltip,
     )
-    toggle = ToggleButton(options.preset_shortcut_enabled)
-    toggle.setFixedWidth(48)
-    _set_tooltip(toggle, action_tooltip("preset_shortcut_toggle", options.tooltip_language))
-    _connect_callback(toggle, callbacks, "preset_shortcut_toggle")
-    card.layout.addWidget(toggle)
-    shortcut_label = _make_option_label(ui_text("Shortcut", options.main_ui_language))
-    card.layout.addWidget(shortcut_label)
-    row = QHBoxLayout()
-    row.setSpacing(8)
-    pending_combo = options.preset_shortcut_pending_combo or options.preset_shortcut_combo
-    shortcut = _make_option_button(pending_combo)
-    shortcut.setMinimumWidth(160)
-    if options.preset_shortcut_capture_active:
-        shortcut.setProperty("active", "true")
-    _set_tooltip(shortcut, action_tooltip("preset_shortcut_capture", options.tooltip_language))
-    _connect_callback(shortcut, callbacks, "preset_shortcut_capture")
-    row.addWidget(shortcut, 1)
-    apply = QPushButton(ui_text("Apply", options.main_ui_language))
-    apply.setFixedWidth(56)
-    _set_tooltip(apply, action_tooltip("preset_shortcut_apply", options.tooltip_language))
-    _connect_callback(apply, callbacks, "preset_shortcut_apply")
-    row.addWidget(apply)
-    card.layout.addLayout(row)
-    hint = QLabel(ui_text("Example: R3+Dpad Up. The shortcut is read from the selected DualSense device.", options.main_ui_language))
-    hint.setObjectName("TelemetryHint")
-    hint.setWordWrap(True)
-    card.layout.addWidget(hint)
+    card.layout.setSpacing(6)
+    _add_gamepad_shortcut_row(
+        card,
+        options,
+        callbacks,
+        "preset",
+        "Preset Shortcut",
+        options.preset_shortcut_pending_combo or options.preset_shortcut_combo,
+        options.preset_shortcut_capture_active,
+    )
+    _add_gamepad_shortcut_row(
+        card,
+        options,
+        callbacks,
+        "hud",
+        "HUD ON/OFF Shortcut",
+        options.hud_shortcut_pending_combo or options.hud_shortcut_combo,
+        options.hud_shortcut_capture_active,
+    )
     card.layout.addStretch(1)
     return card
 
@@ -380,7 +416,7 @@ def build_options_page(callbacks: OptionCallbacks | None = None, state: AppState
     left_layout.addWidget(_build_language_option_card(options, callbacks))
 
     grid.addWidget(left_stack, 0, 0)
-    grid.addWidget(_build_preset_shortcut_option_card(options, callbacks), 0, 1)
+    grid.addWidget(_build_gamepad_shortcut_option_card(options, callbacks), 0, 1)
     grid.addWidget(relay_wrap, 1, 0, 1, 2)
     grid.addWidget(dsx_wrap, 2, 0, 1, 2)
     grid.addWidget(_build_app_info_option_card(options, callbacks), 3, 0, 1, 2)

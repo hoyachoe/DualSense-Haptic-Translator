@@ -16,6 +16,7 @@ $releaseDefaultsVerifier = Join-Path $PSScriptRoot "verify_release_defaults.py"
 $hapticParityVerifier = Join-Path $PSScriptRoot "verify_haptic_legacy_parity.py"
 $triggerReleaseVerifier = Join-Path $PSScriptRoot "verify_trigger_release_fixes.py"
 $inlineDescriptionsVerifier = Join-Path $PSScriptRoot "verify_inline_descriptions.py"
+$gamepadShortcutsVerifier = Join-Path $PSScriptRoot "verify_gamepad_shortcuts.py"
 $hudUiScaleVerifier = Join-Path $PSScriptRoot "verify_hud_ui_scale_independence.py"
 $hapticEqBoostVerifier = Join-Path $PSScriptRoot "verify_haptic_eq_boost.py"
 $artifactsRoot = Join-Path $projectRoot "artifacts"
@@ -25,6 +26,33 @@ $distRoot = Join-Path $artifactsRoot "public_release"
 $specRoot = Join-Path $artifactsRoot "public_spec"
 $outputPublishRoot = Join-Path $artifactsRoot "output_runtime"
 $releaseRoot = Join-Path $distRoot $appName
+
+$pythonExecutable = $null
+$pythonPrefixArguments = @()
+$localPython310 = $null
+if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    $localPython310 = Join-Path $env:LOCALAPPDATA "Programs\Python\Python310\python.exe"
+}
+if ($localPython310 -and (Test-Path -LiteralPath $localPython310 -PathType Leaf)) {
+    $pythonExecutable = $localPython310
+} else {
+    $pythonLauncher = Get-Command py -ErrorAction SilentlyContinue
+    if ($null -eq $pythonLauncher) {
+        throw "Python 3.10 was not found. Install it or register it with the Windows py launcher."
+    }
+    $pythonExecutable = $pythonLauncher.Source
+    $pythonPrefixArguments = @('-3.10')
+}
+
+$pythonVersionCheckArguments = @($pythonPrefixArguments) + @(
+    '-B',
+    '-c',
+    'import sys; assert sys.version_info[:2] == (3, 10), sys.version'
+)
+& $pythonExecutable @pythonVersionCheckArguments
+if ($LASTEXITCODE -ne 0) {
+    throw "The release build requires Python 3.10."
+}
 
 function Assert-FileExists {
     param([Parameter(Mandatory)][string]$LiteralPath)
@@ -114,6 +142,7 @@ Assert-FileExists $releaseDefaultsVerifier
 Assert-FileExists $hapticParityVerifier
 Assert-FileExists $triggerReleaseVerifier
 Assert-FileExists $inlineDescriptionsVerifier
+Assert-FileExists $gamepadShortcutsVerifier
 Assert-FileExists $hudUiScaleVerifier
 Assert-FileExists $hapticEqBoostVerifier
 $allowlist = Get-Content -LiteralPath $allowlistPath -Raw | ConvertFrom-Json
@@ -129,10 +158,12 @@ foreach ($verifier in @(
     $hapticParityVerifier,
     $triggerReleaseVerifier,
     $inlineDescriptionsVerifier,
+    $gamepadShortcutsVerifier,
     $hudUiScaleVerifier,
     $hapticEqBoostVerifier
 )) {
-    & py -3.10 -B $verifier
+    $verifierArguments = @($pythonPrefixArguments) + @('-B', $verifier)
+    & $pythonExecutable @verifierArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Release verification failed: $verifier (exit code $LASTEXITCODE)."
     }
@@ -181,7 +212,6 @@ Assert-FileExists $iconPath
 Assert-FileExists $entryPoint
 
 $pyInstallerArguments = @(
-    '-3.10',
     '-m', 'PyInstaller',
     '--noconfirm',
     '--clean',
@@ -197,7 +227,8 @@ $pyInstallerArguments = @(
     '--exclude-module', 'dht_app.telemetry_test_packets',
     $entryPoint
 )
-& py @pyInstallerArguments
+$pyInstallerCommandArguments = @($pythonPrefixArguments) + $pyInstallerArguments
+& $pythonExecutable @pyInstallerCommandArguments
 if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller failed with exit code $LASTEXITCODE."
 }

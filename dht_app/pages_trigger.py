@@ -4,7 +4,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from .app_state import AppState
-from .detail_schema import TRIGGER_DETAIL_GROUPS, grouped_numeric_details, grouped_option_details
+from .detail_schema import (
+    TRIGGER_DETAIL_GROUPS,
+    detail_value_from_slider,
+    format_detail_value,
+    grouped_numeric_details,
+    grouped_option_details,
+)
 from .tooltip_texts import detail_tooltip, effect_tooltip
 from .ui_theme import COLORS
 from .ui_texts import ui_text
@@ -294,12 +300,32 @@ def build_trigger_advanced_panel(callbacks: TriggerCallbacks | None = None, stat
                         detail.value,
                         "",
                         (
-                            (lambda new_value, key=detail.key, callback=detail_callback: callback(key, new_value))
+                            (
+                                lambda new_value,
+                                key=detail.key,
+                                display_style=detail.display_style,
+                                callback=detail_callback: callback(
+                                    key,
+                                    detail_value_from_slider(display_style, new_value),
+                                )
+                            )
                             if detail_callback is not None
                             else None
                         ),
                         detail.minimum,
                         detail.maximum,
+                        value_formatter=(
+                            (
+                                lambda new_value, detail=detail: format_detail_value(
+                                    detail.display_style,
+                                    new_value,
+                                    detail.minimum,
+                                    detail.maximum,
+                                )
+                            )
+                            if detail.display_style
+                            else None
+                        ),
                         description_text=detail_tooltip(detail.key, language),
                     )
                 )

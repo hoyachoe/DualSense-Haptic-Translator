@@ -16,7 +16,12 @@ from dht_app.app_state import (  # noqa: E402
     default_output_graph_item,
 )
 from dht_app.preset_loader import load_builtin_presets_into_state  # noqa: E402
-from dht_app.settings_io import apply_app_state_snapshot, export_app_state  # noqa: E402
+from dht_app.settings_io import (  # noqa: E402
+    PRESET_CONTENT_KEYS,
+    apply_app_state_snapshot,
+    export_app_state,
+    preserve_saved_preset_content,
+)
 
 
 def _assert(condition: bool, message: str) -> None:
@@ -102,10 +107,91 @@ def _verify_public_preset_defaults() -> None:
     )
 
 
+def _verify_preset_save_button_policy() -> None:
+    state = AppState()
+    report = load_builtin_presets_into_state(state)
+    _assert(not report.missing_files, report.summary)
+    saved_snapshot = export_app_state(state)
+
+    state.set_haptic_effect_value("Road Bumps", 1)
+    state.set_haptic_detail_value("volume", 2)
+    haptic_advanced_name = next(iter(state.haptic_advanced))
+    state.set_haptic_advanced_value(haptic_advanced_name, 3)
+    state.set_trigger_effect_value("Brake Resistance - Predictive", 4)
+    state.set_trigger_detail_value("force_percent", 5)
+    trigger_advanced_name = next(iter(state.trigger_advanced))
+    state.set_trigger_advanced_value(trigger_advanced_name, 6)
+    state.set_preset("Strong")
+    state.toggle_haptic_effect("Road Bumps")
+    state.toggle_trigger_effect("Impact Tick")
+    state.set_game_mode(GameMode.MOTORSPORT)
+    state.set_preset("User 1")
+    state.set_haptic_effect_value("Road Bumps", 7)
+    state.options.main_ui_scale = 125
+    state.hud.standby_hide = not state.hud.standby_hide
+
+    current_snapshot = export_app_state(state)
+    merged = preserve_saved_preset_content(current_snapshot, saved_snapshot)
+
+    _assert(
+        merged["options"]["main_ui_scale"] == 125,
+        "A preference-only save discarded the current Main UI scale.",
+    )
+    _assert(
+        merged["hud"]["standby_hide"] == current_snapshot["hud"]["standby_hide"],
+        "A preference-only save discarded the current HUD preference.",
+    )
+    _assert(
+        merged["game_mode"] == current_snapshot["game_mode"]
+        and merged["selected_preset"] == current_snapshot["selected_preset"],
+        "A preference-only save discarded the current game or preset selection.",
+    )
+
+    for game_mode in GameMode:
+        game_key = game_mode.value
+        current_profile = current_snapshot["game_profiles"][game_key]
+        merged_profile = merged["game_profiles"][game_key]
+        saved_profile = saved_snapshot["game_profiles"][game_key]
+        _assert(
+            merged_profile["selected_preset"] == current_profile["selected_preset"],
+            f"{game_key} preset selection was not preserved.",
+        )
+        _assert(
+            merged_profile["presets"] == saved_profile["presets"],
+            f"{game_key} unsaved preset slots leaked into a preference-only save.",
+        )
+        selected_saved = saved_profile["presets"][merged_profile["selected_preset"]]
+        for key in PRESET_CONTENT_KEYS:
+            _assert(
+                merged_profile[key] == selected_saved[key],
+                f"{game_key} active {key} did not return to the last SAVE payload.",
+            )
+
+    active_profile = merged["game_profiles"][merged["game_mode"]]
+    for key in PRESET_CONTENT_KEYS:
+        _assert(
+            merged[key] == active_profile[key],
+            f"Top-level {key} disagrees with the selected saved preset.",
+        )
+
+    _assert(state.preset_unsaved_changes, "Preset edits were not marked separately as dirty.")
+    state.mark_preferences_saved()
+    _assert(
+        state.unsaved_changes and state.preset_unsaved_changes,
+        "Saving preferences incorrectly cleared pending preset edits.",
+    )
+    state.mark_settings_saved()
+    _assert(
+        not state.unsaved_changes and not state.preset_unsaved_changes,
+        "Explicit settings SAVE did not clear the preset dirty state.",
+    )
+
+
 def main() -> int:
     _verify_safe_first_run_defaults()
     _verify_legacy_rpm_compatibility()
     _verify_public_preset_defaults()
+    _verify_preset_save_button_policy()
     print("Release defaults and clean first-run policy verification: PASS")
     return 0
 

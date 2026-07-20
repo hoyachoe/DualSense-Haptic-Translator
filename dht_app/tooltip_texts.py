@@ -23,7 +23,7 @@ NAV_TOOLTIPS = {
         "Watch live telemetry graphs and choose which Forza fields each card displays."
     ),
     "options": (
-        "Configure language targets, backup, relay, DSX bridge, and preset shortcuts."
+        "Configure language targets, backup, relay, DSX bridge, and gamepad shortcuts."
     ),
     "sound_to_haptic": (
         "Convert a selected Windows playback stream into DualSense haptic audio.\n"
@@ -59,9 +59,12 @@ ACTION_TOOLTIPS = {
     "main_ui_language": "Change the main UI language target.",
     "tooltip_language": "Change the tooltip/help language target.",
     "window_scale": "Set the main UI scale. Applying this value requires an app restart.",
-    "preset_shortcut_toggle": "Enable or disable the DualSense preset shortcut.",
     "preset_shortcut_capture": "Click, then hold a DualSense button combination to capture it.",
     "preset_shortcut_apply": "Apply and save the current DualSense shortcut combination.",
+    "preset_shortcut_delete": "Delete the preset shortcut. None means the shortcut is disabled.",
+    "hud_shortcut_capture": "Click, then hold a DualSense button combination for HUD ON/OFF.",
+    "hud_shortcut_apply": "Apply and save the HUD ON/OFF shortcut combination.",
+    "hud_shortcut_delete": "Delete the HUD ON/OFF shortcut. None means the shortcut is disabled.",
     "update_check": "Check the latest public GitHub release version.",
     "telemetry_relay_toggle": "Enable or disable raw telemetry relay forwarding.",
     "telemetry_relay_host": "Destination host for forwarded telemetry packets.",
@@ -81,7 +84,7 @@ ACTION_TOOLTIPS = {
     "hud_unit_boost": "Change the HUD boost unit display.",
     "hud_rpm_style": "Switch the RPM HUD between Classic, Modern layered arc, and 40-segment Digital Bar styles.",
     "hud_all_toggle": "Shows the current regular HUD state. Click to toggle all regular HUD overlays. Debug HUDs are not included.",
-    "standby_hide": "Hide HUD overlays while waiting for telemetry, then show them when data arrives.",
+    "standby_hide": "Hide HUD overlays until Horizon vehicle motion confirms active driving. Menus, loading, the garage, and a stationary post-menu return stay hidden.",
     "hud_location_reset": "Move HUD overlays back to their default layout positions.",
     "snap_hud": "Snap HUD windows to nearby positions while dragging.",
     "snap_pixel_down": "Decrease snap distance.",
@@ -240,6 +243,7 @@ HUD_TOOLTIPS = {
 
 OPTION_TOOLTIPS = {
     "Language": "Choose display language targets. Tooltip language can be connected independently from the main UI.",
+    "Gamepad Shortcut": "Assign DualSense combinations for preset switching and temporary HUD visibility.",
     "Preset Shortcut": "Use a DualSense button combination to temporarily jump to User 2, then return.",
     "Telemetry UDP Relay": "Copy raw Forza UDP packets to another local app or simulator tool.",
     "DSX Output": "Optional DSX bridge and audio export settings. Normal DualSense output does not require this.",
@@ -312,8 +316,10 @@ DETAIL_TOOLTIPS = {
     "pulse_strength": "Strength of the trigger pulse response.\nLower values are subtle. Higher values make pulses easier to feel.",
     "pulse_start_percent": "Position where pulses start.\nLower values start pulses earlier. Higher values delay pulses until later in the zone.",
     "pulse_timing_offset": "Moves pulse timing earlier or later.\nLower values pull timing earlier. Higher values push it later.",
-    "slip_threshold": "Slip level where response starts.\nLower values react earlier. Higher values require more slip.",
-    "slip_end_threshold": "Slip level where slip response ends.\nLower values recover earlier. Higher values keep slip response active longer.",
+    "slip_threshold": "Slip level where response starts (0.1-5.0, in 0.1 steps).\nLower values react earlier. Higher values require more slip.",
+    "slip_end_threshold": "Slip level where slip response ends (0.1-5.0, in 0.1 steps).\nLower values recover earlier. Higher values keep slip response active longer.",
+    "upshift_sides": "Trigger side used for the upshift kick.\nLeft uses L2, Right uses R2, and Both uses both triggers.",
+    "downshift_sides": "Trigger side used for the downshift kick.\nLeft uses L2, Right uses R2, and Both uses both triggers.",
     "slip_drop_low_percent": "Remaining low resistance while slipping.\nLower values drop resistance more. Higher values keep more resistance.",
     "slip_low_percent": "Remaining resistance during slip.\nLower values make slip release stronger. Higher values keep the trigger firmer.",
     "slip_pulse_start_percent": "Output level where slip pulses begin.\nLower values start pulsing sooner. Higher values wait for stronger slip output.",
@@ -947,6 +953,26 @@ for _language, _detail_texts in DETAIL_TOOLTIP_TRANSLATIONS.items():
     LOCALIZED_TOOLTIPS[_language]["detail"].update(_detail_texts)
 
 
+LOCALIZED_TOOLTIPS["KR"]["detail"].update({
+    "slip_threshold": "슬립 반응이 시작되는 기준값입니다(0.1~5.0, 0.1 단위).\n낮을수록 더 일찍 반응하고, 높을수록 더 큰 슬립이 필요합니다.",
+    "slip_end_threshold": "슬립 반응이 끝나는 기준값입니다(0.1~5.0, 0.1 단위).\n낮을수록 더 일찍 복귀하고, 높을수록 슬립 반응이 더 오래 유지됩니다.",
+    "upshift_sides": "업시프트 킥을 출력할 트리거를 선택합니다.\nLeft는 L2, Right는 R2, Both는 양쪽 트리거입니다.",
+    "downshift_sides": "다운시프트 킥을 출력할 트리거를 선택합니다.\nLeft는 L2, Right는 R2, Both는 양쪽 트리거입니다.",
+})
+LOCALIZED_TOOLTIPS["CN"]["detail"].update({
+    "slip_threshold": "打滑响应开始的阈值（0.1-5.0，步进 0.1）。\n数值越低越早响应；数值越高需要更明显的打滑。",
+    "slip_end_threshold": "打滑响应结束的阈值（0.1-5.0，步进 0.1）。\n数值越低越早恢复；数值越高保持响应的时间越长。",
+    "upshift_sides": "选择升挡冲击输出到哪一侧扳机。\nLeft 为 L2，Right 为 R2，Both 为双侧。",
+    "downshift_sides": "选择降挡冲击输出到哪一侧扳机。\nLeft 为 L2，Right 为 R2，Both 为双侧。",
+})
+LOCALIZED_TOOLTIPS["ES"]["detail"].update({
+    "slip_threshold": "Nivel de deslizamiento que inicia la respuesta (0.1-5.0, pasos de 0.1).\nLos valores bajos reaccionan antes; los altos requieren más deslizamiento.",
+    "slip_end_threshold": "Nivel de deslizamiento donde termina la respuesta (0.1-5.0, pasos de 0.1).\nLos valores bajos recuperan antes; los altos mantienen la respuesta más tiempo.",
+    "upshift_sides": "Lado del gatillo usado para el golpe de cambio ascendente.\nLeft usa L2, Right usa R2 y Both usa ambos gatillos.",
+    "downshift_sides": "Lado del gatillo usado para el golpe de cambio descendente.\nLeft usa L2, Right usa R2 y Both usa ambos gatillos.",
+})
+
+
 LOCALIZED_TOOLTIPS["KR"]["action"].update({
     "hud_rpm_style": "RPM HUD를 Classic, 레이어형 Modern 아크, 40구간 Digital Bar 스타일 사이에서 전환합니다.",
     "device_current_candidate": "현재 Windows 재생 장치 후보입니다.\n이 장치를 선택한 뒤 Test Haptic으로 확인하고 저장하세요.",
@@ -979,7 +1005,7 @@ LOCALIZED_TOOLTIPS["KR"]["action"].update({
     "hud_unit_power": "HUD 동력 단위 표기를 변경합니다.",
     "hud_unit_boost": "HUD 부스트 단위 표기를 변경합니다.",
     "hud_all_toggle": "일반 HUD의 현재 상태를 보여줍니다. 클릭하면 일반 HUD를 모두 켜거나 끕니다. 디버그 HUD는 포함되지 않습니다.",
-    "standby_hide": "텔레메트리 대기 중에는 HUD를 숨기고, 데이터가 들어오면 다시 표시합니다.",
+    "standby_hide": "Horizon 차량의 실제 이동으로 주행 상태가 확인될 때까지 HUD를 숨깁니다. 메뉴, 로딩, 차고, 메뉴 복귀 후 정지 상태에서는 계속 숨깁니다.",
     "hud_location_reset": "HUD 오버레이를 기본 배치 위치로 되돌립니다.",
     "snap_hud": "HUD를 드래그할 때 가까운 위치에 스냅되도록 합니다.",
     "snap_pixel_down": "스냅 거리를 줄입니다.",
@@ -1035,7 +1061,7 @@ LOCALIZED_TOOLTIPS["CN"]["action"].update({
     "hud_unit_power": "更改 HUD 功率单位显示。",
     "hud_unit_boost": "更改 HUD 增压单位显示。",
     "hud_all_toggle": "显示普通 HUD 的当前状态。点击可切换所有普通 HUD。调试 HUD 不包含在内。",
-    "standby_hide": "等待遥测时隐藏 HUD，收到数据后再显示。",
+    "standby_hide": "在 Horizon 车辆实际移动确认正在驾驶之前隐藏 HUD。菜单、加载、车库以及从菜单返回后的静止状态会继续隐藏。",
     "hud_location_reset": "将 HUD 叠加层移回默认布局位置。",
     "snap_hud": "拖动 HUD 时吸附到附近位置。",
     "snap_pixel_down": "减小吸附距离。",
@@ -1091,7 +1117,7 @@ LOCALIZED_TOOLTIPS["ES"]["action"].update({
     "hud_unit_power": "Cambia la unidad de potencia del HUD.",
     "hud_unit_boost": "Cambia la unidad de boost del HUD.",
     "hud_all_toggle": "Muestra el estado actual de los HUD normales. Haz clic para alternarlos todos. Los HUD de debug no se incluyen.",
-    "standby_hide": "Oculta los HUD mientras se espera telemetria y los muestra cuando llegan datos.",
+    "standby_hide": "Oculta los HUD hasta que el movimiento real del vehículo en Horizon confirme la conducción. Los menús, la carga, el garaje y el regreso detenido desde un menú permanecen ocultos.",
     "hud_location_reset": "Mueve los HUD a sus posiciones predeterminadas.",
     "snap_hud": "Ajusta los HUD a posiciones cercanas al arrastrarlos.",
     "snap_pixel_down": "Reduce la distancia de snap.",
@@ -1114,6 +1140,42 @@ LOCALIZED_TOOLTIPS["ES"]["option"].update({
     "App Version": "Comprueba si hay una version publica mas nueva en GitHub Releases.",
     "Window Scale": "Ajusta la escala de la interfaz principal. Aplicar un valor nuevo requiere reiniciar la app.",
 })
+
+LOCALIZED_TOOLTIPS["KR"]["action"].update({
+    "preset_shortcut_capture": "클릭한 뒤 듀얼센스 버튼 조합을 잠시 누르면 프리셋 숏컷으로 캡처합니다.",
+    "preset_shortcut_apply": "현재 프리셋 숏컷 조합을 적용하고 저장합니다.",
+    "preset_shortcut_delete": "프리셋 숏컷을 삭제합니다. None은 숏컷이 해제된 상태입니다.",
+    "hud_shortcut_capture": "클릭한 뒤 HUD ON/OFF에 사용할 듀얼센스 버튼 조합을 누릅니다.",
+    "hud_shortcut_apply": "현재 HUD ON/OFF 숏컷 조합을 적용하고 저장합니다.",
+    "hud_shortcut_delete": "HUD ON/OFF 숏컷을 삭제합니다. None은 숏컷이 해제된 상태입니다.",
+})
+LOCALIZED_TOOLTIPS["KR"]["option"]["Gamepad Shortcut"] = (
+    "프리셋 전환과 HUD 표시 전환에 사용할 듀얼센스 버튼 조합을 지정합니다."
+)
+
+LOCALIZED_TOOLTIPS["CN"]["action"].update({
+    "preset_shortcut_capture": "点击后按住 DualSense 按钮组合，将其捕获为预设快捷键。",
+    "preset_shortcut_apply": "应用并保存当前预设快捷键组合。",
+    "preset_shortcut_delete": "删除预设快捷键。None 表示该快捷键已禁用。",
+    "hud_shortcut_capture": "点击后按住用于 HUD 开关的 DualSense 按钮组合。",
+    "hud_shortcut_apply": "应用并保存当前 HUD 开关快捷键组合。",
+    "hud_shortcut_delete": "删除 HUD 开关快捷键。None 表示该快捷键已禁用。",
+})
+LOCALIZED_TOOLTIPS["CN"]["option"]["Gamepad Shortcut"] = (
+    "为预设切换和 HUD 显示切换指定 DualSense 按钮组合。"
+)
+
+LOCALIZED_TOOLTIPS["ES"]["action"].update({
+    "preset_shortcut_capture": "Haz clic y mantén una combinación del DualSense para capturar el atajo de preset.",
+    "preset_shortcut_apply": "Aplica y guarda la combinación actual del atajo de preset.",
+    "preset_shortcut_delete": "Elimina el atajo de preset. None significa que está desactivado.",
+    "hud_shortcut_capture": "Haz clic y mantén una combinación del DualSense para activar o desactivar el HUD.",
+    "hud_shortcut_apply": "Aplica y guarda la combinación actual del atajo HUD ON/OFF.",
+    "hud_shortcut_delete": "Elimina el atajo HUD ON/OFF. None significa que está desactivado.",
+})
+LOCALIZED_TOOLTIPS["ES"]["option"]["Gamepad Shortcut"] = (
+    "Asigna combinaciones del DualSense para cambiar presets y mostrar u ocultar el HUD."
+)
 
 LOCALIZED_TOOLTIPS["KR"]["action"]["telemetry_current_value"] = "현재 그래프 값입니다."
 LOCALIZED_TOOLTIPS["CN"]["action"]["telemetry_current_value"] = "当前图表数值。"

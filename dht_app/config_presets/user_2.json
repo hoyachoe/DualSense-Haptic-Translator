@@ -692,7 +692,7 @@
     "Brake Resistance - Predictive": {
       "enabled": true,
       "curve": 0,
-      "start_percent": 20,
+      "start_percent": 40,
       "max_percent": 70,
       "force_percent": 30,
       "upshift_strength_percent": 20,
@@ -710,7 +710,7 @@
       "kick_softness": 7,
       "release_duration_ms": 45,
       "slip_off": true,
-      "slip_threshold": 7,
+      "slip_threshold": 1.5,
       "slip_end_threshold": 2.2,
       "slip_response_mode": "Pulse",
       "slip_pulse_enabled": true,

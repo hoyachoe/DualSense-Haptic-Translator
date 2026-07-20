@@ -14,6 +14,7 @@ class TelemetryFrame:
     packet_size: int
     parsed: bool = False
     is_race_on: bool | None = None
+    timestamp_ms: int | None = None
     max_rpm: float | None = None
     idle_rpm: float | None = None
     accel_x: float | None = None
@@ -22,7 +23,12 @@ class TelemetryFrame:
     velocity_x: float | None = None
     velocity_y: float | None = None
     velocity_z: float | None = None
+    angular_velocity_x: float | None = None
     angular_velocity_y: float | None = None
+    angular_velocity_z: float | None = None
+    yaw: float | None = None
+    pitch: float | None = None
+    roll: float | None = None
     norm_suspension_travel_fl: float | None = None
     norm_suspension_travel_fr: float | None = None
     norm_suspension_travel_rl: float | None = None
@@ -43,6 +49,10 @@ class TelemetryFrame:
     wheel_on_rumble_strip_fr: int | None = None
     wheel_on_rumble_strip_rl: int | None = None
     wheel_on_rumble_strip_rr: int | None = None
+    wheel_in_puddle_fl: float | int | None = None
+    wheel_in_puddle_fr: float | int | None = None
+    wheel_in_puddle_rl: float | int | None = None
+    wheel_in_puddle_rr: float | int | None = None
     surface_rumble_fl: float | None = None
     surface_rumble_fr: float | None = None
     surface_rumble_rl: float | None = None
@@ -59,6 +69,10 @@ class TelemetryFrame:
     tire_combined_slip_fr: float | None = None
     tire_combined_slip_rl: float | None = None
     tire_combined_slip_rr: float | None = None
+    suspension_travel_meters_fl: float | None = None
+    suspension_travel_meters_fr: float | None = None
+    suspension_travel_meters_rl: float | None = None
+    suspension_travel_meters_rr: float | None = None
     tire_temp_fl: float | None = None
     tire_temp_fr: float | None = None
     tire_temp_rl: float | None = None
@@ -72,6 +86,26 @@ class TelemetryFrame:
     car_class: int | None = None
     car_performance_index: int | None = None
     drive_train: int | None = None
+    num_cylinders: int | None = None
+    car_group: int | None = None
+    position_x: float | None = None
+    position_y: float | None = None
+    position_z: float | None = None
+    fuel: float | None = None
+    distance_traveled: float | None = None
+    best_lap: float | None = None
+    last_lap: float | None = None
+    current_lap: float | None = None
+    current_race_time: float | None = None
+    lap_number: int | None = None
+    race_position: int | None = None
+    normalized_driving_line: int | None = None
+    normalized_ai_brake_difference: int | None = None
+    tire_wear_fl: float | None = None
+    tire_wear_fr: float | None = None
+    tire_wear_rl: float | None = None
+    tire_wear_rr: float | None = None
+    track_ordinal: int | None = None
     drift: float | None = None
     source_note: str = ""
 
